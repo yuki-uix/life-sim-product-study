@@ -1,4 +1,4 @@
-/* 三个周末 · a quiet text RPG interface. */
+/* 城南八周 · a quiet character-growth text RPG. */
 @font-face {
   font-family: "Fusion Pixel";
   src: url("./fonts/fusion-pixel-12px-zh-hans.woff2") format("woff2");
@@ -330,4 +330,171 @@ svg { shape-rendering: crispEdges; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}
+
+/* Growth is visible beside the scene, with a compact version above it on phones. */
+.game-grid { grid-template-columns: minmax(0, 1fr) 272px; }
+.game-topline { margin-bottom: 12px; }
+.round-counter { display: flex; align-items: baseline; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.round-counter strong, .round-counter b { font-size: 20px; color: var(--amber); }
+.character-panel { border: 2px solid var(--line); background: var(--window); padding: 14px; margin-bottom: 14px; }
+.character-strip { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.character-strip > :not(svg):not(img) { min-width: 0; }
+.character-strip .pixel-avatar, .character-strip .rpg-avatar { width: 40px; height: 40px; flex: 0 0 40px; }
+.character-name { color: var(--ink); font-size: 16px; line-height: 1.5; margin: 0; }
+.character-subtitle { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.character-identities { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
+.identity-tag { display: inline-block; border: 1px solid #507961; padding: 1px 5px; color: var(--accent); background: #1b3029; font-size: 11px; line-height: 1.6; }
+.identity-tag.is-empty { border-color: var(--line-soft); background: transparent; color: var(--muted); }
+.skills-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 14px; }
+.skill-card { min-width: 0; padding: 10px; border: 1px solid var(--line-soft); background: var(--bg); }
+.skill-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 7px; line-height: 1.6; }
+.skill-name { font-size: 14px; color: var(--ink); }
+.skill-stage { color: var(--accent); font-size: 12px; }
+.skill-amount { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.skill-pips { display: flex; align-items: center; gap: 5px; margin: 8px 0; }
+.skill-pips i { display: block; width: 22px; height: 7px; border: 1px solid var(--line); background: var(--window); }
+.skill-pips i.filled { border-color: var(--accent); background: var(--accent); }
+.skill-next { display: block; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.skill-next strong { color: var(--amber); }
+.growth-strip { display: none; }
+.growth-notice { margin: 12px 0; padding: 12px 14px; border: 1px solid #597b66; border-left: 3px solid var(--accent); background: #1b3029; color: var(--ink); font-size: 14px; line-height: 1.8; }
+.growth-notice strong { display: block; margin-bottom: 4px; color: var(--accent); font-size: 16px; }
+.growth-notice p { margin: 4px 0 0; color: #b9cbbd; font-size: 13px; line-height: 1.8; }
+.growth-notice .small-label { margin-bottom: 4px; color: var(--accent); }
+.growth-notice.is-identity { border-color: #8a794b; border-left-color: var(--amber); background: #2c2b24; }
+.growth-notice.is-identity strong { color: var(--amber); }
+
+/* An invitation is the scene itself, rather than another screen before the action. */
+.scene-header { padding: 16px 18px; }
+.scene-header h1 { margin-bottom: 8px; }
+.scene-header .eyebrow { margin-bottom: 8px; }
+.scene-copy { line-height: 1.85; }
+.scene-copy p { margin-bottom: 8px; }
+.opportunity-card { border-color: #8a794b; background: #232a30; }
+.opportunity-card .dialogue-box { border-left-color: var(--amber); }
+.opportunity-card .dialogue-speaker { color: var(--amber); }
+.tag { display: inline-block; padding: 1px 6px; border: 1px solid #8a794b; color: var(--amber); font-size: 11px; line-height: 1.7; vertical-align: middle; }
+.action-group-label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; margin: 13px 0 7px; color: var(--amber); font-size: 12px; line-height: 1.65; }
+.action-group-label .muted { font-size: 11px; }
+.choice-list { margin-top: 0; }
+.choice-card { min-height: 84px; padding: 12px 14px; gap: 9px; }
+.choice-body h2 { font-size: 17px; margin-bottom: 4px; }
+.choice-body p { font-size: 12px; margin-bottom: 6px; line-height: 1.7; }
+.choice-meta { gap: 3px 10px; line-height: 1.7; }
+.choice-consequence { margin-top: 4px; line-height: 1.7; }
+.choice-card.is-new { box-shadow: inset 3px 0 0 var(--accent); background: #1c302e; }
+.choice-card.is-new:hover:not(:disabled), .choice-card.is-new:focus-visible { background: #264039; }
+.choice-card.is-new:disabled { box-shadow: inset 3px 0 0 #5e7564; background: #172523; }
+.choice-badge { display: inline-block; padding: 0 4px; margin: 0 0 2px 5px; border: 1px solid #597b66; color: var(--accent); font-size: 10px; line-height: 1.6; vertical-align: middle; }
+.choice-card:disabled .choice-badge { color: var(--muted); border-color: var(--line); }
+
+/* Show the new thing the character can do before settling the wallet. */
+.feedback-growth { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; padding: 10px 12px; margin: 12px 0; border: 1px solid var(--line); background: var(--bg); color: var(--muted); font-size: 14px; line-height: 1.8; }
+.feedback-growth strong { color: var(--accent); }
+.feedback-growth .skill-pips { margin: 0; }
+.feedback-delta { color: var(--accent); font-size: 14px; }
+.feedback-numbers { margin-top: 14px; padding: 9px 0; }
+.feedback-numbers strong { font-size: 20px; }
+.turn-feedback { padding: 18px; }
+.feedback-symbol { width: 26px; height: 26px; margin-bottom: 10px; font-size: 17px; }
+.feedback-body h1, .feedback-body h2 { font-size: 22px; line-height: 1.6; margin-bottom: 10px; }
+.feedback-body p { line-height: 1.85; }
+
+/* Keepsakes stay in the world after the invitation has been answered. */
+.world-panel { min-width: 0; padding: 14px; border: 2px solid var(--line); background: var(--window); margin-bottom: 14px; }
+.world-panel > .small-label { color: var(--amber); }
+.world-panel > p { margin-bottom: 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.artifact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0 0; }
+.sidebar .artifact-grid { grid-template-columns: minmax(0, 1fr); }
+.artifact-card { display: block; min-width: 0; padding: 12px; border: 1px solid var(--line-soft); background: var(--bg); color: var(--ink); text-align: left; }
+button.artifact-card { width: 100%; cursor: pointer; }
+button.artifact-card:hover { background: var(--window-raised); border-color: var(--accent); }
+.artifact-art { display: flex; align-items: center; justify-content: center; min-height: 70px; padding: 8px; margin: 0 0 9px; border-bottom: 1px solid var(--line-soft); }
+.artifact-art svg { width: 112px; max-width: 100%; height: 72px; }
+.artifact-card h2, .artifact-card h3, .artifact-card strong { display: block; margin: 0 0 4px; font-size: 15px; line-height: 1.7; color: var(--ink); }
+.artifact-description, .artifact-card p { display: block; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.artifact-card .text-button { min-height: 36px; padding-bottom: 0; margin-top: 3px; font-size: 12px; }
+.journey-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.journey-stage { min-width: 0; padding: 10px 12px; border: 1px solid var(--line-soft); border-left: 3px solid var(--line); background: var(--bg); color: var(--muted); font-size: 12px; line-height: 1.8; }
+.journey-stage strong { display: block; color: var(--ink); font-size: 14px; }
+.journey-stage p { margin: 4px 0 0; }
+.journey-stage.reached { border-left-color: var(--accent); }
+.journey-stage.reached strong { color: var(--accent); }
+
+@media (max-width: 720px) {
+  .site-header { min-height: 56px; padding-top: 6px; padding-bottom: 6px; }
+  .shell { margin-top: 12px; }
+  .game-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .game-topline { margin-bottom: 8px; }
+  .round-counter { font-size: 11px; }
+  .round-counter strong, .round-counter b { font-size: 18px; }
+  .growth-strip { display: block; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); background: var(--window); }
+  .growth-strip .character-strip { gap: 8px; }
+  .growth-strip .pixel-avatar, .growth-strip .rpg-avatar { width: 32px; height: 32px; flex-basis: 32px; }
+  .growth-strip .character-name { font-size: 14px; }
+  .growth-strip .character-subtitle { display: none; }
+  .growth-strip .character-identities { display: inline-flex; gap: 4px; margin: 0 0 0 7px; vertical-align: middle; }
+  .growth-strip .identity-tag { font-size: 10px; }
+  .growth-strip .skills-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+  .growth-strip .skill-card { border: 0; border-top: 1px solid var(--line-soft); padding: 6px 0 0; background: transparent; }
+  .growth-strip .skill-head { gap: 2px 4px; }
+  .growth-strip .skill-name { font-size: 12px; }
+  .growth-strip .skill-stage { font-size: 11px; }
+  .growth-strip .skill-pips { gap: 4px; margin: 5px 0; }
+  .growth-strip .skill-pips i { width: 18px; height: 5px; }
+  .growth-strip .skill-next { font-size: 10px; line-height: 1.6; }
+  .sidebar > .character-panel { display: none; }
+  .scene-header, .turn-feedback { padding: 13px 14px; }
+  .scene-header .eyebrow { margin-bottom: 5px; }
+  .scene-header h1 { font-size: 20px; line-height: 1.6; margin-bottom: 6px; }
+  .scene-copy, .feedback-body p { font-size: 15px; line-height: 1.8; }
+  .scene-copy p { margin-bottom: 7px; }
+  .dialogue-box { padding: 6px 9px; margin-top: 10px; }
+  .dialogue-speaker { font-size: 12px; margin-bottom: 2px; }
+  .action-group-label { margin: 10px 0 6px; font-size: 11px; }
+  .choice-card { min-height: 80px; padding: 10px 11px; grid-template-columns: 20px minmax(0, 1fr) 10px; gap: 8px; }
+  .choice-index { width: 20px; height: 21px; font-size: 11px; }
+  .choice-body h2 { font-size: 16px; margin-bottom: 4px; }
+  .choice-body p { font-size: 12px; line-height: 1.7; margin-bottom: 5px; }
+  .choice-meta { font-size: 11px; gap: 3px 8px; }
+  .choice-meta strong { font-size: 12px; }
+  .choice-consequence { font-size: 11px; }
+  .choice-arrow { font-size: 13px; }
+  .choice-badge { font-size: 9px; margin-left: 3px; }
+  .growth-notice { padding: 10px 12px; margin: 10px 0; }
+  .growth-notice strong { font-size: 15px; }
+  .growth-notice p { font-size: 12px; }
+  .feedback-body h1, .feedback-body h2 { font-size: 20px; }
+  .feedback-growth { padding: 8px 10px; font-size: 12px; }
+  .feedback-delta { font-size: 12px; }
+  .feedback-numbers > span:first-child { font-size: 12px; }
+  .feedback-numbers > span:last-child { font-size: 14px; gap: 8px; }
+  .feedback-numbers strong { font-size: 18px; }
+  .world-panel { padding: 12px; }
+  .sidebar .artifact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .artifact-card { padding: 10px; }
+  .artifact-art { min-height: 62px; padding: 5px; }
+  .artifact-art svg { height: 60px; }
+  .artifact-card h2, .artifact-card h3, .artifact-card strong { font-size: 13px; }
+  .artifact-description, .artifact-card p { font-size: 11px; }
+  .journey-grid { gap: 8px; }
+  .journey-stage { padding: 8px 9px; font-size: 11px; }
+  .journey-stage strong { font-size: 13px; }
+}
+@media (max-width: 380px) {
+  .site-header { gap: 7px; }
+  .brand-name { font-size: 16px; }
+  .brand-mark { width: 23px; height: 25px; }
+  .header-actions { gap: 7px; }
+  #save-status { max-width: 54px; }
+  .growth-strip { padding: 9px 10px; }
+  .growth-strip .skill-head { flex-wrap: wrap; }
+  .growth-strip .skill-name { font-size: 11px; }
+  .growth-strip .skill-stage { font-size: 10px; }
+  .growth-strip .identity-tag { font-size: 9px; }
+  .choice-card { padding-left: 9px; padding-right: 9px; gap: 7px; }
+  .choice-body h2 { font-size: 15px; }
+  .choice-meta { column-gap: 6px; }
+  .artifact-grid, .sidebar .artifact-grid { grid-template-columns: minmax(0, 1fr); }
 }

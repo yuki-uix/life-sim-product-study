@@ -4,12 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#101722">
-    <meta name="description" content="三个周末，一本小册，一点生活余量。一个关于如何安排有限时间的可玩生活片段。">
-    <meta property="og:title" content="三个周末 · 文字生活 RPG">
-    <meta property="og:url" content="https://three-weekends-yuki.yuki-uix.chatgpt.site">
+    <meta name="description" content="从只能帮忙，到能独立负责一件事。在城南的八周里，练出本领，遇见新的事件，慢慢长成自己的样子。">
+    <meta property="og:title" content="城南八周 · 文字养成 RPG">
+    <meta property="og:url" content="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
     <link rel="canonical" href="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
-    <meta property="og:description" content="接一份额外工作，还是做完自己的小册？体验三个周末里实际得到与放弃的东西。">
-    <title>三个周末 · 文字生活 RPG</title>
+    <title>城南八周 · 文字养成 RPG</title>
     <link rel="preload" href="./fonts/fusion-pixel-12px-zh-hans.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./styles.css">
@@ -18,17 +17,14 @@
   <body>
     <a class="sr-only skip-link" href="#main">跳到主要内容</a>
     <header class="site-header">
-      <button type="button" class="brand" data-action="home" aria-label="三个周末，打开游戏菜单">
-        <span class="brand-mark" aria-hidden="true">三</span>
-        <span class="brand-name">三个周末</span>
-      </button>
-      <span class="prototype-badge">文字 RPG / v0.1</span>
-      <div class="header-actions"><span id="save-status" class="muted" aria-live="polite"></span><button type="button" class="text-button" id="restart-button" data-action="restart" hidden>重新开始 ↗</button></div>
+      <button type="button" class="brand" data-action="home" aria-label="城南八周，打开游戏菜单"><span class="brand-mark" aria-hidden="true">南</span><span class="brand-name">城南八周</span></button>
+      <span class="prototype-badge">文字养成 RPG / v0.2</span>
+      <div class="header-actions"><span id="save-status" class="muted" aria-live="polite"></span><button type="button" class="text-button" id="restart-button" data-action="restart">重新开始 ↗</button></div>
     </header>
     <main id="main" class="shell" tabindex="-1"></main>
-    <footer class="site-footer"><span class="footer-note">一段虚构生活。金额为演示规则，记录只保存在这个浏览器。</span><a class="footer-link" href="https://github.com/yuki-uix/life-sim-product-study" target="_blank" rel="noopener noreferrer">产品拆解实验 ↗</a></footer>
-    <dialog id="restart-dialog" class="confirm-dialog" aria-labelledby="restart-title"><p class="eyebrow">重新安排时间</p><h2 id="restart-title">开始一个新的片段？</h2><p>当前这局会被新的选择替换。</p><div class="dialog-actions"><button type="button" class="button-secondary" data-action="cancel-restart">继续这一局</button><button type="button" class="primary-button" data-action="confirm-restart">开始新片段</button></div></dialog>
-    <dialog id="book-dialog" class="confirm-dialog book-dialog" aria-labelledby="book-title"><div class="book-dialog-header"><p class="eyebrow">你的周末小册</p><button type="button" class="text-button" data-action="close-book" aria-label="关闭小册">关闭 ×</button></div><h2 id="book-title">住在这里</h2><div id="book-content"></div></dialog>
+    <footer class="site-footer"><span class="footer-note">虚构生活与演示规则。进度只存在这个浏览器。</span><a class="footer-link" href="https://github.com/yuki-uix/life-sim-product-study" target="_blank" rel="noopener noreferrer">产品拆解实验 ↗</a></footer>
+    <dialog id="restart-dialog" class="confirm-dialog" aria-labelledby="restart-title"><p class="eyebrow">重新出发</p><h2 id="restart-title">开始一个新的片段？</h2><p>当前这局会被新的选择替换。</p><div class="dialog-actions"><button type="button" class="button-secondary" data-action="cancel-restart">继续这一局</button><button type="button" class="primary-button" data-action="confirm-restart">开始新片段</button></div></dialog>
+    <dialog id="artifact-dialog" class="confirm-dialog book-dialog" aria-labelledby="artifact-title"><div class="book-dialog-header"><p class="eyebrow">你做成的东西</p><button type="button" class="text-button" data-action="close-artifact" aria-label="关闭成果">关闭 ×</button></div><h2 id="artifact-title"></h2><div id="artifact-content"></div></dialog>
     <div id="toast" class="toast" role="status" hidden></div>
     <noscript><p class="shell">这个生活片段需要 JavaScript 才能记录选择和继续游玩。</p></noscript>
   </body>
