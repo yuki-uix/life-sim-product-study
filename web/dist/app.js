@@ -1,171 +1,162 @@
-import { createGame, applyChoice, getChoices, validateSave } from './engine.js?v=0.3.0';
-import { CONFIG, PEOPLE, SKILLS, MEMORIES, getScene, getEnding, getPersonNote } from './content.js';
-import { campusScene, avatar, memoryArt } from './campus-art.js';
+import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary } from './calendar-engine.js?v=0.4.0';
+import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, dateInfo, getStoryPresentation } from './calendar-content.js';
+import { campusScene, avatar } from './campus-art.js';
 
-const STORAGE_KEY = 'campus-slowly.save.v3';
+const STORAGE_KEY = 'campus-slowly.save.v4';
 const main = document.querySelector('#main');
 const restartDialog = document.querySelector('#restart-dialog');
-const memoryDialog = document.querySelector('#memory-dialog');
-const e = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-let game;
-let feedback = false;
-let view = 'game';
-let invalidSave = false;
-let saveError = false;
-let choiceLocked = false;
-let toastTimer;
+const detailDialog = document.querySelector('#detail-dialog');
+const DAY_MS = 1600;
+const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+const e = escapeHTML;
+let game, running = false, speed = 1, started = false, invalidSave = false, saveError = false;
+let accumulated = 0, lastTick = performance.now(), focusOpen = false, logFilter = 'all';
+let unseen = 0, toastTimer;
 
-function persist() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ game, feedback })); saveError = false; }
-  catch { saveError = true; }
-}
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
       const checked = validateSave(saved.game);
-      if (checked.valid) {
-        game = checked.state;
-        feedback = Boolean(saved.feedback && resolved().length);
-        return;
-      }
-      invalidSave = true;
+      if (!checked.valid) { invalidSave = true; game = createGame(); return; }
+      game = checked.state; started = Boolean(saved.started); return;
     }
   } catch { invalidSave = true; }
   game = createGame();
-  if (invalidSave) view = 'menu';
-  else persist();
 }
-function resolved() { return game.events.filter(event => event.type === 'choice.resolved'); }
-function lastChoice() { return resolved().at(-1); }
-function semesterName(semester) { return `${['大一', '大二', '大三', '大四', '大五'][Math.ceil(semester / 2) - 1] || `${Math.ceil(semester / 2)}年级`} · ${semester % 2 ? '秋' : '春'}`; }
-function season(semester) { return semester % 2 ? 'autumn' : 'spring'; }
-function paragraphs(scene) {
-  return `<div class="scene-paragraphs">${(scene.paragraphs || []).map(p => `<p>${e(p)}</p>`).join('')}</div>${scene.dialogue ? `<div class="dialogue"><span class="speaker">${e(scene.speaker)}</span><p>${e(scene.dialogue)}</p></div>` : ''}`;
+function persist() {
+  if (invalidSave) return;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({game, started})); saveError = false; }
+  catch { saveError = true; }
 }
-function toast(message) {
+function toast(text) {
   const target = document.querySelector('#toast');
-  clearTimeout(toastTimer); target.textContent = message; target.hidden = false;
-  toastTimer = setTimeout(() => { target.hidden = true; }, 3500);
+  clearTimeout(toastTimer); target.textContent = text; target.hidden = false;
+  toastTimer = setTimeout(() => { target.hidden = true; }, 3200);
 }
-function skillStage(id, value) { return SKILLS[id].stages[value] || SKILLS[id].stages.at(-1); }
-function skills() {
-  return `<div class="student-skills">${Object.keys(SKILLS).map(id => `<div class="skill-row"><div class="skill-label"><strong>${e(SKILLS[id].name)}</strong><span class="skill-stage">${e(skillStage(id, game.skills[id]))}</span></div><div class="skill-dots" aria-label="${e(SKILLS[id].name)} ${game.skills[id]}/${CONFIG.maxSkill}">${Array.from({ length: CONFIG.maxSkill }, (_, i) => `<i class="${i < game.skills[id] ? 'filled' : ''}"></i>`).join('')}</div></div>`).join('')}</div>`;
+function focusItem() { return FOCUSES.find(item => item.id === game.focus); }
+function pause() { running = false; accumulated = 0; }
+function dateLabel(day) { return dateInfo(day).label; }
+function calendar() {
+  const date = dateInfo(game.day);
+  const status = game.phase === 'ended' ? '这一段走到了十一月底' : game.pending ? '有件事，需要你决定' : running ? '日子在往前走' : started ? '时间已暂停' : '从开学的九月开始';
+  return `<section class="calendar" aria-label="校园日历"><div class="calendar-heading"><div><p class="eyebrow">南棠大学 · 大一 · 秋季</p><h1><span>${e(date.monthLabel)}</span> <b>${date.day}</b><small>日</small></h1></div><div class="calendar-status"><span class="clock-dot ${running ? 'running' : ''}" aria-hidden="true"></span>${e(status)}<small>第 ${date.week} 周 / 九月至十一月试玩</small></div></div><div class="month-track" role="progressbar" aria-label="秋季时间进度" aria-valuemin="0" aria-valuemax="90" aria-valuenow="${game.day}" aria-valuetext="${e(date.label)}"><span style="width:${game.day / 90 * 100}%"></span><i></i><i></i></div><div class="month-labels"><span class="${date.month === 9 ? 'current' : ''}">九月 · 刚开学</span><span class="${date.month === 10 ? 'current' : ''}">十月 · 渐渐熟悉</span><span class="${date.month === 11 ? 'current' : ''}">十一月 · 天凉了</span></div><div class="time-controls"><button class="primary-button" type="button" data-action="play" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>${running ? 'Ⅱ 暂停' : started ? '▷ 继续生活' : '▷ 开始这段生活'}</button><div class="speeds" aria-label="时间速度">${[1,2,4].map(value => `<button type="button" data-speed="${value}" aria-pressed="${speed === value}" ${game.phase === 'ended' ? 'disabled' : ''}>${value}×</button>`).join('')}</div><button class="text-button fast-forward" type="button" data-action="forward" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>到下个节点 ››</button></div></section>`;
 }
-function student() {
-  return `<section class="student-card"><div class="student-heading">${avatar('you')}<div><strong class="student-name">你</strong><span class="student-meta">南棠大学 · 大一新生</span></div></div>${skills()}<p class="student-footnote">慢慢学会一些事，也可以中途换个兴趣。</p></section>`;
+function focusPanel() {
+  const focus = focusItem();
+  return `<section class="focus-panel"><details id="focus-settings" ${focusOpen ? 'open' : ''}><summary><span class="eyebrow">最近，课余常做什么</span><strong>${e(focus.title)}</strong><span class="change-label">${game.pending ? '先处理眼前的事' : '调整 ▾'}</span></summary><div class="focus-options" role="group" aria-label="近期生活重心">${FOCUSES.map(item => `<button type="button" data-focus="${item.id}" class="focus-option" aria-pressed="${game.focus === item.id}" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}><span>${e(item.title)}</span><small>${e(item.description)}</small></button>`).join('')}</div></details><p class="focus-note">${e(focus.description)}<br>这个安排会持续，可以随时换。</p></section>`;
 }
-function mobileStatus() {
-  return `<div class="mobile-status" aria-label="本领">${Object.keys(SKILLS).map(id => `<span>${e(SKILLS[id].name)}<b>${e(skillStage(id, game.skills[id]))}</b></span>`).join('')}</div>`;
+function peoplePanel() {
+  return `<section class="people-panel"><h2>渐渐认得的人</h2><div class="people-list">${game.peopleMet.map(id => `<button type="button" data-person="${id}" class="person-button">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small></span></button>`).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
 }
-function friends() {
-  return `<section class="campus-friends"><h2 class="panel-title">校园里，认得的人</h2>${game.peopleMet.map(id => `<button type="button" class="friend-row" data-person="${e(id)}">${avatar(id)}<span><strong class="friend-name">${e(PEOPLE[id].name)} <small>${e(PEOPLE[id].role)}</small></strong><span class="friend-note">${e(getPersonNote(game, id))}</span></span><span class="friend-arrow" aria-hidden="true">›</span></button>`).join('')}</section>`;
+function storyPanel() {
+  if (!game.pending) return '';
+  const story = STORIES.find(item => item.id === game.pending.storyId);
+  const presentation = getStoryPresentation(story.id, game);
+  return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
 }
-function memoryFor(record) { return MEMORIES[record.id] || { title: '这一刻', caption: '', art: 'leaf' }; }
-function memoryEvent(record) { return game.events.find(event => event.id === record.sourceEventId); }
-function shelf() {
-  return `<section class="memory-shelf"><h2 class="panel-title">留下的小东西 <span>${game.memories.length}</span></h2>${game.memories.length ? `<div class="memory-mini-list">${game.memories.map(record => { const memory = memoryFor(record); return `<button type="button" class="memory-mini" data-memory="${e(record.id)}">${memoryArt(memory.art)}<span>${e(memory.title)}</span><small>${e(semesterName(record.semester))}</small></button>`; }).join('')}</div>` : '<p class="memory-empty">照片、票根、一张小纸条。<br>以后翻到它们，还能记起这一刻。</p>'}</section>`;
+function entryHTML(event) {
+  const starred = game.favorites.includes(event.id);
+  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p></div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
 }
-function sidebar() { return `<aside class="campus-sidebar">${student()}${friends()}${game.phase === 'ended' && !feedback ? '' : shelf()}</aside>`; }
-function strip(semester, text) { return `<div class="semester-strip"><strong>${e(semesterName(semester))}</strong><span>${e(text)}</span><small>大一体验版</small></div>`; }
-function storyCard(scene, semester, receipt = false) {
-  return `<section class="${receipt ? 'receipt-card' : 'scene-card'}"><div class="scene-art">${campusScene(scene.location || 'gate', season(semester))}</div><div class="scene-kicker">${receipt ? '这一次，留下了什么' : game.phase === 'campus' ? '校园里有件事正在发生' : game.slot === 1 ? '新学期，慢慢开始' : '这个学期，还想做些什么'}</div><h1 class="${receipt ? 'receipt-title' : 'scene-title'}">${e(scene.title)}</h1>${paragraphs(scene)}`;
+function diary() {
+  const entries = logFilter === 'favorites' ? game.events.filter(event => game.favorites.includes(event.id)) : game.events;
+  return `<section class="diary" aria-label="生活记录"><div class="diary-heading"><h2>日子，就这样过着</h2><div class="diary-tabs"><button type="button" data-filter="all" aria-pressed="${logFilter === 'all'}">日常</button><button type="button" data-filter="favorites" aria-pressed="${logFilter === 'favorites'}">收藏 ${game.favorites.length || ''}</button></div></div><div id="log-scroll" class="log-scroll" tabindex="0" aria-label="按日期排列的生活记录">${entries.length ? entries.map(entryHTML).join('') : '<p class="empty-note">想留下哪一天，可以点那条记录旁的 ☆。</p>'}</div>${unseen ? `<button type="button" class="new-records" data-action="latest">${unseen} 条新记录 · 回到最近 ↓</button>` : ''}</section>`;
 }
-function choiceCards() {
-  const done = new Set(resolved().filter(event => event.facts.semester === game.semester).map(event => event.facts.choiceId));
-  const choices = getChoices(game).filter(choice => !done.has(choice.id) && (game.phase === 'campus' || choice.enabled));
-  // New invitations appear beside everyday possibilities; they never replace every baseline option.
-  choices.sort((a, b) => Number(Boolean(b.requiresSkill || b.requiresMemory || b.requiresPerson)) - Number(Boolean(a.requiresSkill || a.requiresMemory || a.requiresPerson)));
-  return `<div class="choice-heading"><span>${game.phase === 'campus' ? '想怎样参与？' : '把这段空闲留给……'}</span><small>${game.phase === 'activity' ? '这学期的一个小片段' : '选一种自己的方式'}</small></div><div class="choices" role="group" aria-label="${game.phase === 'activity' ? '安排这段校园时光' : '选择参与方式'}">${choices.map((choice, index) => {
-    const invitation = game.phase === 'activity' && Boolean(choice.requiresSkill || choice.requiresMemory || choice.requiresPerson);
-    return `<button type="button" class="activity-card ${invitation ? 'is-invitation' : ''}" data-choice="${e(choice.id)}" ${choice.enabled ? '' : 'disabled'}><span class="choice-number">${index + 1}</span><span class="choice-content"><strong>${e(choice.title)}</strong>${invitation ? '<span class="choice-tag">一份新邀请</span>' : ''}<span class="choice-description">${e(choice.description)}</span>${!choice.enabled ? `<span class="choice-reason">${e(choice.reason)}</span>` : ''}</span><span class="choice-arrow" aria-hidden="true">${choice.enabled ? '▶' : '·'}</span></button>`;
-  }).join('')}</div><p class="choice-hint">${game.phase === 'activity' ? '没选的事情，校园里也有人在做。以后还有新的相遇。' : '参与、帮忙，或和朋友一起当观众，都能留下自己的回忆。'}<span class="keyboard-hint"> 数字键也能选择。</span></p>`;
+function endingPanel() {
+  if (game.phase !== 'ended') return '';
+  return `<section class="ending-panel"><p class="eyebrow">十一月底</p><h2>转眼，入学已经三个月了。</h2><p>天冷下来，回宿舍的路也熟了。后面的日子还长，这段试玩先停在这里。</p><div class="ending-actions"><button type="button" class="secondary-button" data-action="growth">看看这三个月</button><button type="button" class="text-button" data-action="restart">换一种过法 ↗</button></div></section>`;
 }
-function playing() {
-  const scene = getScene(game);
-  return `${strip(game.semester, game.phase === 'activity' ? `还有 ${CONFIG.activitySlots - game.slot + 1} 段空闲` : '一场共同的校园活动')}${mobileStatus()}<div class="campus-layout"><div class="campus-main">${storyCard(scene, game.semester)}</section>${choiceCards()}</div>${sidebar()}</div>`;
+function render({newStory = false, latest = false} = {}) {
+  const oldLog = document.querySelector('#log-scroll');
+  const nearBottom = !oldLog || oldLog.scrollHeight - oldLog.scrollTop - oldLog.clientHeight < 55;
+  const previousScroll = oldLog?.scrollTop || 0;
+  const focused = document.activeElement;
+  let focusKey;
+  const focusAnchor = focused?.id === 'log-scroll' ? 'log-scroll' : focused?.matches?.('#focus-settings > summary') ? 'focus-summary' : null;
+  if (main.contains(focused)) for (const key of ['action','focus','choice','speed','filter','star','person']) if (focused.dataset?.[key]) {focusKey = [key,focused.dataset[key]]; break;}
+  const details = document.querySelector('#focus-settings');
+  if (details) focusOpen = details.open;
+  main.innerHTML = `${invalidSave ? '<div class="save-warning">这份记录暂时无法读取，原记录已保留。<button type="button" data-action="restart" class="text-button">重新开始这一段</button></div>' : ''}${calendar()}<div class="campus-layout"><aside class="campus-sidebar">${focusPanel()}<div class="quiet-scene" aria-hidden="true">${campusScene(focusItem().location, 'autumn')}</div>${peoplePanel()}</aside><div class="life-column">${!started ? '<p class="opening-note">开学了。课表之外的时间，先按自己喜欢的方式过。</p>' : ''}${storyPanel()}${endingPanel()}${diary()}</div></div>`;
+  const log = document.querySelector('#log-scroll');
+  if (latest || nearBottom) {log.scrollTop = log.scrollHeight; unseen = 0; document.querySelector('.new-records')?.remove();}
+  else log.scrollTop = previousScroll;
+  if (focusKey) {
+    const candidate = [...main.querySelectorAll('button')].find(button => button.dataset[focusKey[0]] === focusKey[1]);
+    if (candidate && !candidate.disabled) candidate.focus({preventScroll:true});
+  }
+  if (focusAnchor === 'log-scroll') log.focus({preventScroll:true});
+  if (focusAnchor === 'focus-summary') document.querySelector('#focus-settings > summary')?.focus({preventScroll:true});
+  if (newStory) {document.querySelector('#story-title')?.focus({preventScroll:true}); document.querySelector('.story-panel')?.scrollIntoView({block:'nearest',behavior:'smooth'});}
+  document.querySelector('#save-status').textContent = saveError ? '暂未保存' : invalidSave ? '记录异常' : '已存到本机';
 }
-function nextLabel() {
-  if (game.phase === 'ended') return '翻开大一的纪念册';
-  if (game.semester > lastChoice().facts.semester) return '春天来了，回学校看看';
-  if (game.phase === 'campus') return '去看看校园里发生了什么';
-  return '接着过这个学期';
+function update(next, {latest = false} = {}) {
+  const oldLength = game.events.length;
+  const newStory = !game.pending && next.pending;
+  const scroll = document.querySelector('#log-scroll');
+  const readingEarlier = scroll && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight >= 55;
+  game = next;
+  if (readingEarlier) unseen += Math.max(0,game.events.length-oldLength);
+  persist(); render({newStory:Boolean(newStory), latest});
 }
-function receipt() {
-  const event = lastChoice();
-  const facts = event.facts;
-  const story = event.narrative;
-  const record = game.memories.find(item => item.sourceEventId === event.id);
-  const memory = record ? memoryFor(record) : null;
-  const growth = Object.keys(SKILLS).filter(id => facts.skillsAfter[id] > facts.skillsBefore[id]);
-  return `${strip(facts.semester, '刚刚过完的这一小段')}${mobileStatus()}<div class="campus-layout"><div class="campus-main">${storyCard(story, facts.semester, true)}${memory ? `<button type="button" class="receipt-memory" data-memory="${e(record.id)}">${memoryArt(memory.art)}<span><small>收进回忆里</small><strong>${e(memory.title)}</strong><span>${e(story.memoryCaption || memory.caption)}</span></span><b aria-hidden="true">↗</b></button>` : ''}${growth.length ? `<div class="receipt-growth">${growth.map(id => `<span>${e(SKILLS[id].name)}：${e(skillStage(id, facts.skillsBefore[id]))} → <strong>${e(skillStage(id, facts.skillsAfter[id]))}</strong></span>`).join('')}</div>` : ''}<button type="button" class="primary-button receipt-next" data-action="next">${e(nextLabel())} <span aria-hidden="true">→</span></button></section></div>${sidebar()}</div>`;
+function advance(count) {
+  const next = advanceDays(game,count);
+  if (next.pending || next.phase === 'ended') pause();
+  update(next);
 }
-function yearTrack() {
-  return `<div class="year-track" aria-label="四年校园生活，目前开放大一体验">${Array.from({ length: CONFIG.programYears }, (_, index) => `<span class="${index === 0 ? 'is-current' : ''}"><b>${['大一','大二','大三','大四','大五'][index] || `${index + 1}年级`}</b><small>${index === 0 ? '这一年，已经留下回忆' : '以后'}</small></span>`).join('')}</div>`;
+function openDetail(title, content) {
+  pause(); render();
+  document.querySelector('#detail-title').textContent = title;
+  document.querySelector('#detail-content').innerHTML = content;
+  detailDialog.showModal();
 }
-function ending() {
-  const scene = getEnding(game);
-  return `<section class="ending-card"><p class="scene-kicker">大一 · 秋与春的纪念册</p><h1>${e(scene.title)}</h1>${paragraphs(scene)}${yearTrack()}<p class="ending-note">这次体验走到大一结束。四年的后续故事，留给以后的学期。</p></section><div class="campus-layout"><div class="campus-main"><div class="memory-grid">${game.memories.map(record => { const memory = memoryFor(record); const event = memoryEvent(record); return `<button type="button" class="memory-card" data-memory="${e(record.id)}"><span class="memory-picture">${memoryArt(memory.art)}</span><span class="memory-date">${e(semesterName(record.semester))}</span><strong class="memory-title">${e(memory.title)}</strong><span class="memory-caption">${e(event?.narrative.memoryCaption || memory.caption)}</span></button>`; }).join('')}</div><div class="ending-actions"><button type="button" class="primary-button" data-action="restart">换一种过法，再过大一</button><button type="button" class="text-button" data-action="journal">看看这一路怎么走过来</button></div></div>${sidebar()}</div>`;
-}
-function menu() {
-  return `<section class="menu-card"><div class="scene-art">${campusScene('gate','autumn')}</div><p class="scene-kicker">南棠大学 · 一段虚构的校园生活</p><h1>大学慢慢来</h1><p>学点感兴趣的东西，认识几个人，<br>把陌生校园过成熟悉的地方。</p><p class="menu-note">这次可以体验大一两个学期。每个学期有两段自由安排和一场校园活动，之后翻开这一年的纪念册。</p>${invalidSave ? '<p class="save-notice">上次记录暂时无法读取。它仍留在本机；重新开始会替换这份大一记录。</p>' : ''}<div class="menu-actions">${!invalidSave ? '<button type="button" class="primary-button" data-action="resume">接着刚才的校园时光</button>' : ''}<button type="button" class="secondary-button" data-action="restart">从新生的第一个周末开始</button></div></section>`;
-}
-function render(focus = true) {
-  main.innerHTML = view === 'menu' ? menu() : feedback ? receipt() : game.phase === 'ended' ? ending() : playing();
-  document.querySelector('#save-status').textContent = saveError ? '这次未能保存' : '记在本机了';
-  document.querySelector('#restart-button').hidden = view === 'menu';
-  if (focus) { main.focus({ preventScroll:true }); window.scrollTo({ top:0, behavior:'instant' }); }
-}
-function takeChoice(id) {
-  if (choiceLocked || view !== 'game' || feedback || game.phase === 'ended') return;
-  const choice = getChoices(game).find(item => item.id === id);
-  if (!choice?.enabled) { toast(choice?.reason || '这件事现在还不能选。'); return; }
-  choiceLocked = true;
-  try { game = applyChoice(game,id,game.turn); feedback = true; persist(); render(); }
-  catch (error) { toast(error.message); }
-  finally { choiceLocked = false; }
-}
-function openDetail(title,html) {
-  document.querySelector('#memory-title').textContent = title;
-  document.querySelector('#memory-content').innerHTML = html;
-  memoryDialog.showModal();
-}
-function showMemory(id) {
-  const record = game.memories.find(item => item.id === id);
-  if (!record) return;
-  const memory = memoryFor(record), event = memoryEvent(record);
-  const people = (event.facts.with || []).filter(person => PEOPLE[person]).map(person => PEOPLE[person].name);
-  openDetail(memory.title, `<div class="memory-detail-art">${memoryArt(memory.art)}</div><p class="memory-date">${e(semesterName(record.semester))} · ${e(memory.place)}${people.length ? ` · 和${e(people.join('、'))}` : ''}</p><div class="memory-detail-copy">${paragraphs(event.narrative)}</div>`);
+function showGrowth() {
+  const summary = getSummary(game);
+  openDetail('这阵子的你', `<div class="growth-person">${avatar('you')}<span>你 · 大一${game.phase === 'ended' ? '的秋天' : '新生'}</span></div><p>最近的生活里，有些事渐渐熟悉起来。</p><div class="growth-skills">${Object.entries(SKILLS).map(([id,skill]) => `<div><span>${e(skill.name)}</span><strong>${e(skill.stages[game.skills[id]])}</strong></div>`).join('')}</div><h3>课余的时间</h3><div class="habit-summary">${FOCUSES.filter(focus => game.focusDays[focus.id] > 0).map(focus => `<p><span>${e(focus.title)}</span><span>${game.focusDays[focus.id]} 天</span></p>`).join('') || '<p>刚刚开始，还没有固定的安排。</p>'}</div><p class="detail-footnote">${summary.peopleMet.length} 位认得的人 · ${game.favorites.length} 条自己选的收藏</p>`);
 }
 function showPerson(id) {
-  if (!game.peopleMet.includes(id) || !PEOPLE[id]) return;
-  const moments = resolved().filter(event => event.facts.with?.includes(id));
-  openDetail(`你和${PEOPLE[id].name}`, `<div class="person-detail-heading">${avatar(id)}<p>${e(getPersonNote(game,id))}</p></div>${moments.length ? moments.map(event => `<article class="journal-entry"><span class="memory-date">${e(semesterName(event.facts.semester))}</span><h3>${e(event.narrative.title)}</h3>${paragraphs(event.narrative)}</article>`).join('') : '<p>刚刚认识，还没有多少共同经历。以后会慢慢有的。</p>'}`);
+  if (!game.peopleMet.includes(id)) return;
+  const meeting = game.events.find(event => event.kind === 'meeting' && event.text.includes(PEOPLE[id].name));
+  const note = id === 'ahe' ? '从入学起就住在同一间宿舍。饭点偶尔一起走，平时也各忙各的。' : meeting?.text || '这阵子在校园里渐渐熟悉起来。';
+  openDetail(PEOPLE[id].name, `<div class="growth-person">${avatar(id)}<span>${e(PEOPLE[id].role)}</span></div><p>${e(note)}</p>`);
 }
-function showJournal() {
-  openDetail('这一年，是这样走过来的', resolved().map(event => `<article class="journal-entry"><span class="memory-date">${e(semesterName(event.facts.semester))}</span><h3>${e(event.narrative.title)}</h3>${paragraphs(event.narrative)}</article>`).join(''));
-}
-document.addEventListener('click',event => {
+document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  if (button.dataset.choice) { takeChoice(button.dataset.choice); return; }
-  if (button.dataset.memory) { showMemory(button.dataset.memory); return; }
-  if (button.dataset.person) { showPerson(button.dataset.person); return; }
-  switch (button.dataset.action) {
-    case 'menu': view = 'menu'; render(); break;
-    case 'resume': view = 'game'; render(); break;
-    case 'restart': restartDialog.showModal(); break;
-    case 'cancel-restart': restartDialog.close(); break;
-    case 'confirm-restart': game = createGame(); feedback = false; view = 'game'; invalidSave = false; restartDialog.close(); persist(); render(); break;
-    case 'next': feedback = false; persist(); render(); break;
-    case 'close-memory': memoryDialog.close(); break;
-    case 'journal': showJournal(); break;
-  }
+  try {
+    if (button.dataset.focus) {update(setFocus(game,button.dataset.focus)); focusOpen = false; document.querySelector('#focus-settings').open = false; return;}
+    if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
+    if (button.dataset.choice) {pause(); logFilter = 'all'; unseen = 0; update(choose(game,button.dataset.choice,game.revision),{latest:true}); return;}
+    if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
+    if (button.dataset.person) {showPerson(button.dataset.person); return;}
+    if (button.dataset.filter) {logFilter = button.dataset.filter; render({latest:true}); return;}
+    switch(button.dataset.action) {
+      case 'play': started = true; running = !running; accumulated = 0; lastTick = performance.now(); persist(); render(); break;
+      case 'forward': {
+        started = true; pause();
+        // Traverse all intervening days and logs; stop at the next unanswered scene.
+        const next = advanceDays(game,CONFIG.totalDays); logFilter = 'all'; unseen = 0; update(next,{latest:true}); break;
+      }
+      case 'latest': unseen = 0; render({latest:true}); break;
+      case 'growth': showGrowth(); break;
+      case 'restart': pause(); render(); restartDialog.showModal(); break;
+      case 'cancel-restart': restartDialog.close(); break;
+      case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
+      case 'close-detail': detailDialog.close(); break;
+    }
+  } catch(error) {pause(); render(); toast(error.message || '这一步暂时没有完成，请再试一次。');}
 });
-document.addEventListener('keydown',event => {
-  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]') || view !== 'game' || feedback || game.phase === 'ended' || !/^[1-6]$/.test(event.key)) return;
-  const button = main.querySelectorAll('[data-choice]')[Number(event.key)-1];
-  if (button && !button.disabled) { event.preventDefault(); takeChoice(button.dataset.choice); }
+document.addEventListener('keydown', event => {
+  if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+  if (event.code === 'Space' && event.target === document.body) {event.preventDefault(); document.querySelector('[data-action="play"]:not(:disabled)')?.click();}
+  if (game.pending && /^[1-3]$/.test(event.key)) {const button = main.querySelectorAll('[data-choice]')[Number(event.key)-1]; if(button && !button.disabled){event.preventDefault();button.click();}}
 });
-load(); render(false);
+document.addEventListener('visibilitychange', () => {if(document.hidden && running){pause();render();}});
+setInterval(() => {
+  const now = performance.now(), elapsed = Math.min(500,now-lastTick); lastTick = now;
+  if (!running || game.pending || game.phase === 'ended' || document.hidden || document.querySelector('dialog[open]')) return;
+  accumulated += elapsed * speed;
+  if (accumulated >= DAY_MS) {accumulated -= DAY_MS; try {advance(1);} catch(error){pause();render();toast(error.message);}}
+},100);
+load(); render({latest:true});
