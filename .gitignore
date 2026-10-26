@@ -4,7 +4,11 @@
 !.env.example
 node_modules/
 dist/
+!web/dist/
+!web/dist/**
 coverage/
 .cache/
 tmp/
 *.log
+.sites-checkout/
+.sites-runtime/
