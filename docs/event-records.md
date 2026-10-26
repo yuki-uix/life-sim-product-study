@@ -40,8 +40,13 @@ flowchart LR
 | `lifeId` | 区分不同人生 |
 | `rulesVersion` / `datasetVersion` | 记录使用的规则与数据版本，避免用新规则解释旧结果 |
 | `seed` | 辅助调试；不能替代玩家选择记录 |
+| `randomState` | 当前随机数状态；恢复时从当前位置继续，不重新抽取候选与结果 |
+| `lastSettledAge` | 最后结算的年龄/年度，避免刷新后重复执行年度变化 |
+| `eventProgress` | 已抽出的可选候选年龄/结果、触发次数与过期状态，避免恢复时重新安排事件 |
 | `currentState` | 当前可继续游戏的状态 |
 | `pendingDecision` | 仍在等待玩家回答的事件；不存在时为空 |
+| `pendingOutcomes` | 已安排但尚未到期的课程完成、状态反馈等后果；带来源、条件和处理状态 |
+| `activeModifiers` | 有期限或绑定岗位/活动的持续效果，包含起止时间和失效条件 |
 | `events` | 已发生、已结算的事件，按稳定顺序排列 |
 
 ### 每次事件
@@ -51,10 +56,12 @@ flowchart LR
 | `id` | 在这一生内稳定且唯一的事件实例标识 |
 | `sequence` | 确定先后顺序，支持同一年多件事 |
 | `type` / `templateVersion` | 类别与当时模板版本 |
+| `definitionId` / `phase` | 对应目录定义与阶段，如 E09 的报名/完成；同一主题可输出不同实际记录 |
 | `age` | 发生时年龄；使用具体年代时另存 `year` |
 | `facts` | 人物、地点、触发背景、选择与实际结果等结构化事实 |
 | `textSnapshot` | 当时展示给玩家的文字 |
 | `tags` | 由类型决定的少量标签，如 `education`、`migration`、`milestone` |
+| `sourceEventIds` | 有明确来源时关联过去事件；外部随机冲击不假装由上一次选择造成 |
 
 有选择的事件在 `facts` 中保存选项 ID、当时选项文字和已结算结果；没有选择的事件不需要伪造一个选项。仅保存与该事件有关的结果或变化，无需复制整个状态对象。
 
@@ -62,7 +69,7 @@ flowchart LR
 
 ## 4. 一条例子
 
-以下为虚构模型示例，没有采用真实奖学金数据，也不表示已实现。
+以下为虚构存档片段，省略了其他状态和更早的记录；没有采用真实奖学金数据，也不表示已实现。
 
 ```json
 {
@@ -71,16 +78,35 @@ flowchart LR
   "rulesVersion": "prototype-1",
   "datasetVersion": "sample-1",
   "seed": "demo-seed",
+  "randomState": "opaque-demo-state",
+  "lastSettledAge": 18,
   "currentState": {
     "age": 18,
-    "educationStage": "university"
+    "educationRoute": "higher",
+    "enrollmentStatus": "active"
   },
   "pendingDecision": null,
+  "pendingOutcomes": [
+    {
+      "id": "outcome_001",
+      "sourceEventId": "event_0042",
+      "dueAge": 22,
+      "kind": "education.complete",
+      "status": "pending",
+      "requires": {
+        "educationRoute": "higher",
+        "enrollmentStatus": "active"
+      }
+    }
+  ],
+  "activeModifiers": [],
   "events": [
     {
       "id": "event_0042",
       "sequence": 42,
-      "type": "education.scholarship_accepted",
+      "type": "education.path_chosen",
+      "definitionId": "E05",
+      "phase": "chosen",
       "templateVersion": 1,
       "age": 18,
       "year": 2044,
@@ -114,6 +140,9 @@ flowchart LR
 3. 事件实例 ID 用于防止重复结算：刷新或重复点击不能再次发奖学金、改变状态或追加同一事件。
 4. 存档成功后再标记已保存。写入失败需要保留内存数据并反馈，不静默假装保存成功。
 5. 增加字段时提供旧版本默认值或迁移；缺失的旧事实保持未知，不通过猜测补成“历史”。
+6. 到期后果、当前随机数状态和年度结算标记随同一次存档保存。先校验条件再发资格/待遇，结算后标记已处理；失效时明确取消，不能每年重新发现并重复执行。
+
+首版已包含实际连锁玩法，因此来源事件、到期后果与持续效果现在就要实现。具体调度优先级和岗位失效规则见 [核心玩法规格](gameplay-v0.1.md)，不是等 sharing 开发时才补。
 
 事件事实与文案一旦结算便保留当时值。未来用户收藏、分享标题或删减展示内容属于另外的表现数据，不直接改写已经发生的事实。
 
@@ -125,12 +154,14 @@ flowchart LR
 | 用户收藏、排序和选择片段 | 稳定 `lifeId` 与事件实例 ID |
 | 分享卡与人生小传 | 事实与文案快照 |
 | 分享图排版、多语言展示 | 结构化事实可重新排版；旧文案快照仍保留 |
-| 解释事件链 | 将来按需要增加 `causedByEventId` 等引用；首版如有必需的连锁玩法，应同步记录关系 |
+| 更复杂的事件链解释 | 首版已有的来源引用与待结算后果可直接复用；未来再扩展多原因解释与可视化 |
 | 分享页面、图片存储、链接归因 | 后续另行实现公开快照与访问端点 |
 
 首版不需要确定最终的重要性评分或分享许可布尔值。是否允许某类内容展示、怎样删减、用户选中哪些事件，由未来的分享流程结合当时规则处理。
 
 ## 7. 首版验收示例
+
+以下也包含面向未来状态变化的兼容性示例，可通过构造状态验证记录结构；不要求首版提供退学、更名或迁居的用户操作。
 
 - 一个人在 18 岁接受奖学金，后来退学，旧记录仍能准确展示这次获得奖学金的经历。
 - 同年先迁居再换工作，时间线和筛选结果的顺序稳定。
