@@ -37,7 +37,8 @@ flowchart LR
 | [分析角色说明](agents/lead-product-analyst.md) | 可复用的分析职责与交付边界 |
 | [游戏设计评估](docs/lead-game-design-review.md) | v0.1 叙事评估、v0.2 趣味性复评与一手设计参考 |
 | [游戏设计角色](agents/lead-game-designer.md) | Lead Game Designer 的职责与交付边界 |
-| **[当前 MVP，已实现待试玩](docs/mvp-minimal.md)** | **两项能力、四个条件事件，验证成长与身份的实际用途** |
+| **[下一版 MVP 范围提案](docs/china-mvp-scope.md)** | **中国，大学到初入职场；两项能力、三个共同节点，先验证角色如何应对事件** |
+| [线上 v0.2 范围记录](docs/mvp-minimal.md) | 现有八周原型及用户反馈，不代表下一版已实现 |
 | [可玩实现](web/README.md) | 在线入口、运行方式、参数、存档与验证 |
 | [原 MVP 草案](docs/mvp.md) | 已后置的较完整方案，不是当前执行范围 |
 | [核心玩法 v0.1](docs/gameplay-v0.1.md) | 后续候选：数值、关系、健康与年度调度 |
