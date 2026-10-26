@@ -1,31 +1,28 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101722">
-    <meta name="description" content="从只能帮忙，到能独立负责一件事。在城南的八周里，练出本领，遇见新的事件，慢慢长成自己的样子。">
-    <meta property="og:title" content="城南八周 · 文字养成 RPG">
-    <meta property="og:url" content="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
-    <link rel="canonical" href="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
-    <title>城南八周 · 文字养成 RPG</title>
-    <link rel="preload" href="./fonts/fusion-pixel-12px-zh-hans.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css">
-    <script type="module" src="./app.js"></script>
-  </head>
-  <body>
-    <a class="sr-only skip-link" href="#main">跳到主要内容</a>
-    <header class="site-header">
-      <button type="button" class="brand" data-action="home" aria-label="城南八周，打开游戏菜单"><span class="brand-mark" aria-hidden="true">南</span><span class="brand-name">城南八周</span></button>
-      <span class="prototype-badge">文字养成 RPG / v0.2</span>
-      <div class="header-actions"><span id="save-status" class="muted" aria-live="polite"></span><button type="button" class="text-button" id="restart-button" data-action="restart">重新开始 ↗</button></div>
-    </header>
-    <main id="main" class="shell" tabindex="-1"></main>
-    <footer class="site-footer"><span class="footer-note">虚构生活与演示规则。进度只存在这个浏览器。</span><a class="footer-link" href="https://github.com/yuki-uix/life-sim-product-study" target="_blank" rel="noopener noreferrer">产品拆解实验 ↗</a></footer>
-    <dialog id="restart-dialog" class="confirm-dialog" aria-labelledby="restart-title"><p class="eyebrow">重新出发</p><h2 id="restart-title">开始一个新的片段？</h2><p>当前这局会被新的选择替换。</p><div class="dialog-actions"><button type="button" class="button-secondary" data-action="cancel-restart">继续这一局</button><button type="button" class="primary-button" data-action="confirm-restart">开始新片段</button></div></dialog>
-    <dialog id="artifact-dialog" class="confirm-dialog book-dialog" aria-labelledby="artifact-title"><div class="book-dialog-header"><p class="eyebrow">你做成的东西</p><button type="button" class="text-button" data-action="close-artifact" aria-label="关闭成果">关闭 ×</button></div><h2 id="artifact-title"></h2><div id="artifact-content"></div></dialog>
-    <div id="toast" class="toast" role="status" hidden></div>
-    <noscript><p class="shell">这个生活片段需要 JavaScript 才能记录选择和继续游玩。</p></noscript>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101722">
+  <meta name="description" content="在南棠大学，学点感兴趣的东西，认识几个人，把陌生校园过成熟悉的地方。两个学期的大一文字养成试玩。">
+  <meta property="og:title" content="大学慢慢来 · 大一试玩">
+  <meta property="og:description" content="社团开放日、第一次借相机、宿舍电影夜。用自己的方式过两个学期，翻开只属于这一年的纪念册。">
+  <meta property="og:url" content="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
+  <link rel="canonical" href="https://three-weekends-yuki.yuki-uix.chatgpt.site/">
+  <title>大学慢慢来 · 大一试玩</title>
+  <link rel="preload" href="./fonts/fusion-pixel-12px-zh-hans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=0.3.0">
+  <script type="module" src="./app.js?v=0.3.0-r1"></script>
+</head>
+<body>
+  <a class="sr-only skip-link" href="#main">跳到校园时光</a>
+  <header class="site-header"><button type="button" class="brand" data-action="menu" aria-label="大学慢慢来，打开菜单"><span class="brand-mark" aria-hidden="true">校</span><span class="brand-name">大学慢慢来</span></button><span class="prototype-badge">南棠大学 / 大一体验</span><div class="header-actions"><span id="save-status" aria-live="polite"></span><button type="button" class="text-button" id="restart-button" data-action="restart">重来 ↗</button></div></header>
+  <main id="main" class="shell" tabindex="-1"></main>
+  <footer class="site-footer"><span>虚构校园 · 大一试玩 · 回忆保存在这个浏览器</span><a href="https://github.com/yuki-uix/life-sim-product-study" target="_blank" rel="noopener noreferrer">产品拆解实验 ↗</a></footer>
+  <dialog id="restart-dialog" class="confirm-dialog" aria-labelledby="restart-title"><p class="scene-kicker">再过一次大一</p><h2 id="restart-title">从第一个周末重新开始？</h2><p>这份大一记录会被新的一年替换。</p><div class="dialog-actions"><button type="button" class="secondary-button" data-action="cancel-restart">留在这一年</button><button type="button" class="primary-button" data-action="confirm-restart">重新入学</button></div></dialog>
+  <dialog id="memory-dialog" class="confirm-dialog memory-dialog" aria-labelledby="memory-title"><div class="dialog-header"><p class="scene-kicker">翻一翻，共同留下的时光</p><button type="button" class="text-button" data-action="close-memory" aria-label="合上回忆">合上 ×</button></div><h2 id="memory-title"></h2><div id="memory-content"></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><p class="shell">这段校园时光需要 JavaScript，才能记住你的选择。</p></noscript>
+</body>
 </html>

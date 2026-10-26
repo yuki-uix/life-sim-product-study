@@ -12,7 +12,7 @@
 
 ## 现有实现的三个断点
 
-检查了 [app.js](../web/dist/app.js) 的 `intro()`、`choices()`、`feedback()` 与 `playing()`：
+检查了 [v0.1 app.js](https://github.com/yuki-uix/life-sim-product-study/blob/90e029e819e28bf34a316fab98d3a13e9fb39074/web/dist/app.js) 的 `intro()`、`choices()`、`feedback()` 与 `playing()`：
 
 1. 玩家开始前先选开局、读规则；开始后仍面对另一层说明，进入动作较慢。
 2. 两个按钮主要像资源计划。同一行动没有随处境变化的具体任务，书店和小册容易只是数值标签。
@@ -94,9 +94,9 @@
 
 | 已验证的实现事实 | 对体验的诊断，仍需玩家验证 |
 | --- | --- |
-| [行动定义](../web/dist/engine.js) 为固定收入、成本、经验与门槛；技能 2、4 加一次实际任务分别开放事件 | 玩家可能很快看见全部路线，点击是在确认预期，少有重新判断局面的需要 |
-| [事件解锁](../web/dist/engine.js) 只检查自己的能力、已完成任务与既有机会 | 世界主要在等玩家达标后发奖励，缺少独立发生、值得角色介入的事情 |
-| [任务叙事](../web/dist/story.js) 自动完成构图、沟通、找书与推荐，行动后直接结算 | 玩家决定是否接任务，却没有参与任务里有意思的处理；更多旁白不会自动增加行动权 |
+| [v0.2 行动定义](https://github.com/yuki-uix/life-sim-product-study/blob/28cb67ee806eb71ef76b192f3ee0deb80f0263ab/web/dist/engine.js) 为固定收入、成本、经验与门槛；技能 2、4 加一次实际任务分别开放事件 | 玩家可能很快看见全部路线，点击是在确认预期，少有重新判断局面的需要 |
+| [v0.2 事件解锁](https://github.com/yuki-uix/life-sim-product-study/blob/28cb67ee806eb71ef76b192f3ee0deb80f0263ab/web/dist/engine.js) 只检查自己的能力、已完成任务与既有机会 | 世界主要在等玩家达标后发奖励，缺少独立发生、值得角色介入的事情 |
+| [v0.2 任务叙事](https://github.com/yuki-uix/life-sim-product-study/blob/28cb67ee806eb71ef76b192f3ee0deb80f0263ab/web/dist/story.js) 自动完成构图、沟通、找书与推荐，行动后直接结算 | 玩家决定是否接任务，却没有参与任务里有意思的处理；更多旁白不会自动增加行动权 |
 | 身份后的机械变化主要是任务标题、收入与呈现；同项任务的身份场景固定 | 身份可能更像毕业证，未充分改变下一次想怎样安排生活 |
 | 题材沿用书店与小册，用户只确认了养角色及能力触发事件 | 「想长成谁」仍未建立；不能把两个职业称号当作用户愿望 |
 

@@ -1,207 +1,181 @@
-/** Fictional prototype rules. No DOM, network, timers or random gameplay outcomes. */
-export const RULES = Object.freeze({
-  schemaVersion: 2,
-  version: '0.2.0',
-  maxRounds: 8,
-  livingCost: 80,
-  maxSkill: 4,
-  taskSkill: 2,
-  milestoneSkill: 4,
-});
+/** Campus prototype rules. No DOM, timers, network or random gameplay outcomes. */
+import { CONFIG, CHOICES, PEOPLE, SKILLS, MEMORIES, getNarrative, getChoicePresentation } from './content.js';
 
-export const SCENARIOS = Object.freeze([
-  Object.freeze({ id: 'roomy', title: '有一点积蓄', funds: 480, description: '手头还留着 480 元，可以试着把一件事做熟。' }),
-  Object.freeze({ id: 'tight', title: '刚付过房租', funds: 180, description: '房租付清了，手头还剩 180 元。安排练习时，也要留意日常开销。' }),
-]);
-
-export const ACTIONS = Object.freeze([
-  { id: 'shop_practice', skill: 'shop', kind: 'practice', title: '跟陈姐整理书架', description: '从认书架、找书到安排陈列，把书店里的事慢慢做熟。', income: 200, materialsCost: 0, skillGain: 1, requiredSkill: 0 },
-  { id: 'art_practice', skill: 'art', kind: 'practice', title: '练习街巷速写', description: '带上纸笔出门，练习把看到的街景画清楚。', income: 0, materialsCost: 40, skillGain: 1, requiredSkill: 0 },
-  { id: 'shop_shift', skill: 'shop', kind: 'task', title: '独立看店', description: '用已经学会的本领，独立接待来书店的人。', income: 320, materialsCost: 0, skillGain: 0, requiredSkill: 2 },
-  { id: 'art_commission', skill: 'art', kind: 'task', title: '画街角招牌', description: '把速写本上的练习用到一块真正的店铺招牌上。', income: 260, materialsCost: 60, skillGain: 0, requiredSkill: 2 },
-  { id: 'shop_table', skill: 'shop', kind: 'milestone', title: '策划周末书桌', description: '选书、布置、接待，由你负责一张自己的主题书桌。', income: 0, materialsCost: 0, skillGain: 0, requiredSkill: 4, requiredTask: 'shop_shift', identity: 'shop' },
-  { id: 'art_book', skill: 'art', kind: 'milestone', title: '制作街巷小册', description: '把练习和招牌中的经验整理成一册自己的街巷作品。', income: 0, materialsCost: 0, skillGain: 0, requiredSkill: 4, requiredTask: 'art_commission', identity: 'art' },
-].map(Object.freeze));
-
-const ACTION_BY_ID = new Map(ACTIONS.map(action => [action.id, action]));
-const SKILL_NAMES = Object.freeze({ shop: '书店事务', art: '街巷创作' });
-const IDENTITY_NAMES = Object.freeze({ shop: '书店搭档', art: '街巷画手' });
+export { CONFIG };
+const CHOICE_BY_ID = new Map(CHOICES.map(choice => [choice.id, choice]));
+const SKILL_IDS = Object.keys(SKILLS);
+const MAX_CHOICES = CONFIG.playableSemesters * (CONFIG.activitySlots + 1);
+const LOCATIONS = new Set(['gate', 'dorm', 'lake', 'club', 'hall']);
 let fallbackId = 0;
-
-export function getSkillStage(value) {
-  return ['生疏', '试着做', '上手', '渐熟', '熟练'][value] ?? '生疏';
-}
 
 function fail(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
 }
+function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
-function scenarioById(id) {
-  const scenario = SCENARIOS.find(item => item.id === id);
-  if (!scenario) throw fail('unknown_scenario', '没有找到这个开局。');
-  return scenario;
-}
-
-function initialState(scenarioId, lifeId) {
+function initialState(runId) {
   return {
-    schemaVersion: RULES.schemaVersion,
-    rulesVersion: RULES.version,
-    lifeId,
-    scenarioId,
-    round: 1,
-    funds: scenarioById(scenarioId).funds,
-    skills: { shop: 0, art: 0 },
-    completedTasks: [],
-    identities: [],
-    opportunities: [],
-    status: 'playing',
+    schemaVersion: CONFIG.schemaVersion,
+    rulesVersion: CONFIG.version,
+    runId,
+    programYears: CONFIG.programYears,
+    semester: 1,
+    phase: 'activity',
+    slot: 1,
+    turn: 1,
+    skills: Object.fromEntries(SKILL_IDS.map(id => [id, 0])),
+    peopleMet: ['ahe'],
+    memories: [],
+    flags: {},
     events: [],
   };
 }
 
-export function createGame(scenarioId = 'roomy') {
+export function createGame() {
   const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}_${++fallbackId}`;
-  return initialState(scenarioId, `life_${uuid}`);
+  return initialState(`campus_${uuid}`);
 }
 
-function availability(state, actionId) {
-  const action = ACTION_BY_ID.get(actionId);
-  if (!action) return { enabled: false, reason: '没有这个行动。', code: 'unknown_action', netChange: 0, skillGain: 0 };
-  const hasIdentity = state.identities.includes(action.skill);
-  const income = action.income + (hasIdentity && actionId === 'shop_shift' ? 40 : hasIdentity && actionId === 'art_commission' ? 60 : 0);
-  const netChange = income - action.materialsCost - RULES.livingCost;
-  const result = {
-    enabled: true,
-    reason: '',
-    code: '',
-    skill: action.skill,
-    skillGain: Math.min(action.skillGain, RULES.maxSkill - state.skills[action.skill]),
-    income,
-    livingCost: RULES.livingCost,
-    materialsCost: action.materialsCost,
-    netChange,
-    title: hasIdentity && actionId === 'shop_shift' ? '负责周末书桌' : hasIdentity && actionId === 'art_commission' ? '接一份插画约稿' : action.title,
-  };
-  const blocked = (reason, code = 'unavailable_action') => ({ ...result, enabled: false, reason, code });
-  if (state.status !== 'playing' || state.round > RULES.maxRounds) return blocked('这八周已经结束了。', 'game_ended');
-  if (action.kind === 'milestone' && state.identities.includes(action.identity)) return blocked('这件事已经完成，身份和成果都已留在记录里。');
-  if (state.skills[action.skill] < action.requiredSkill) return blocked(`${SKILL_NAMES[action.skill]}达到${getSkillStage(action.requiredSkill)}（${action.requiredSkill}/4）后，会出现这件事。`);
-  if (action.requiredTask && !state.completedTasks.includes(action.requiredTask)) return blocked(`还需要实际完成一次“${ACTION_BY_ID.get(action.requiredTask).title}”。`);
-  if (action.kind !== 'practice') {
-    const opportunity = state.opportunities.find(item => item.id === actionId);
-    if (!opportunity || opportunity.unlockedRound > state.round) return blocked('这次邀请尚未到来。');
+function availability(state, choiceId) {
+  const choice = CHOICE_BY_ID.get(choiceId);
+  const result = { enabled: true, reason: '', code: '', choiceId };
+  const blocked = (reason, code = 'unavailable_choice') => ({ ...result, enabled: false, reason, code });
+  if (!choice) return blocked('没有这件事。', 'unknown_choice');
+  if (state.phase === 'ended') return blocked('大一的这段体验已经结束，可以翻翻回忆或重新开始。', 'game_ended');
+  if (choice.semester !== state.semester) return blocked('这件事属于另一个学期。', 'wrong_semester');
+  if (choice.kind !== state.phase) return blocked(state.phase === 'campus' ? '眼前的校园活动开始了，先决定怎样参与。' : '先安排这学期的日常，校园活动还没有开始。', 'wrong_phase');
+  if (choice.kind === 'activity' && state.events.some(event => event.type === 'choice.resolved' && event.facts.choiceId === choiceId && event.facts.semester === state.semester)) {
+    return blocked('这学期已经做过这件事，留一段时间试试别的。', 'already_chosen');
   }
-  if (state.funds + netChange < 0) return blocked(`还差 ${-(state.funds + netChange)} 元支付本周开销，可以先去书店帮忙。`, 'insufficient_funds');
+  const requirement = choice.requiresSkill;
+  if (requirement && state.skills[requirement.id] < requirement.min) {
+    return blocked(`还需要${SKILLS[requirement.id].name}达到“${SKILLS[requirement.id].stages[requirement.min]}”。可以选别的方式参与。`, 'missing_skill');
+  }
+  if (choice.requiresMemory && !state.memories.some(memory => memory.id === choice.requiresMemory)) {
+    return blocked(`这次邀请来自“${MEMORIES[choice.requiresMemory].title}”那段经历；这一年你走了另一条路。`, 'missing_memory');
+  }
+  if (choice.requiresPerson && !state.peopleMet.includes(choice.requiresPerson)) {
+    return blocked(`先认识${PEOPLE[choice.requiresPerson].name}，才会有这次一起去的约定。`, 'missing_person');
+  }
+  const newPeople = choice.meet || [];
+  const withPeople = choice.with || [];
+  if ([...newPeople, ...withPeople].some(id => !PEOPLE[id])) return blocked('这段共同经历的人物资料暂时不完整。', 'content_error');
+  const unknownCompanion = withPeople.find(id => !state.peopleMet.includes(id) && !newPeople.includes(id));
+  if (unknownCompanion) return blocked(`你还没有认识${PEOPLE[unknownCompanion].name}，暂时没有这次一起去的安排。`, 'missing_person');
   return result;
 }
 
-export function getActionAvailability(state, actionId) {
+export function getChoiceAvailability(state, choiceId) {
   const checked = validateSave(state);
-  if (!checked.valid) return { enabled: false, reason: checked.error, code: 'invalid_save', netChange: 0, skillGain: 0 };
-  return availability(checked.state, actionId);
+  return checked.valid ? availability(checked.state, choiceId) : { enabled: false, reason: checked.error, code: 'invalid_save', choiceId };
 }
 
-export function getAvailableActions(state) {
-  return ACTIONS.map(action => ({ ...action, ...getActionAvailability(state, action.id) }));
+export function getChoices(state) {
+  const checked = validateSave(state);
+  if (!checked.valid || checked.state.phase === 'ended') return [];
+  const current = checked.state;
+  return CHOICES.filter(choice => choice.semester === current.semester && choice.kind === current.phase)
+    .map(choice => ({ ...choice, ...getChoicePresentation(current, choice.id), ...availability(current, choice.id) }));
 }
 
-function appendEvent(state, { type, round, action = null, facts = {}, textSnapshot, sourceEventIds = [] }) {
-  const sequence = state.events.length + 1;
-  const event = { id: `${state.lifeId}:event:${sequence}`, sequence, round, type, action, facts, textSnapshot, sourceEventIds };
-  state.events.push(event);
-  return event;
+function validNarrative(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const allowed = new Set(['title', 'paragraphs', 'location', 'speaker', 'dialogue', 'memoryCaption']);
+  if (Object.keys(value).some(key => !allowed.has(key))) return false;
+  if (typeof value.title !== 'string' || !value.title.trim() || value.title.length > 160) return false;
+  if (!Array.isArray(value.paragraphs) || !value.paragraphs.length || value.paragraphs.length > 5) return false;
+  if (value.paragraphs.some(text => typeof text !== 'string' || !text.trim() || text.length > 700)) return false;
+  if (!LOCATIONS.has(value.location)) return false;
+  if (value.speaker !== undefined && (typeof value.speaker !== 'string' || value.speaker.length > 80)) return false;
+  if (value.dialogue !== undefined && (typeof value.dialogue !== 'string' || value.dialogue.length > 700)) return false;
+  if (value.memoryCaption !== undefined && (typeof value.memoryCaption !== 'string' || value.memoryCaption.length > 700)) return false;
+  return true;
 }
 
-function unlockOpportunities(state, round) {
-  for (const action of ACTIONS.filter(item => item.kind !== 'practice')) {
-    if (state.opportunities.some(item => item.id === action.id)) continue;
-    if (state.skills[action.skill] < action.requiredSkill) continue;
-    if (action.requiredTask && !state.completedTasks.includes(action.requiredTask)) continue;
-    const sourceEventIds = state.events.filter(item =>
-      (item.type === 'skill.gained' && item.facts.skill === action.skill)
-      || (item.type === 'task.completed' && item.action === action.requiredTask)
-    ).map(item => item.id);
-    const opportunity = { id: action.id, unlockedRound: round + 1, sourceEventIds };
-    state.opportunities.push(opportunity);
-    appendEvent(state, {
-      type: 'opportunity.unlocked', round, action: action.id,
-      facts: { opportunityId: action.id, skill: action.skill, requiredSkill: action.requiredSkill, requiredTask: action.requiredTask ?? null, unlockedRound: round + 1 },
-      textSnapshot: `${SKILL_NAMES[action.skill]}已${getSkillStage(action.requiredSkill)}${action.requiredTask ? '，也实际做过一次任务' : ''}。“${action.title}”的机会将在下一周到来。`,
-      sourceEventIds,
-    });
+function choiceSources(previous, choice) {
+  const ids = new Set();
+  for (const event of previous.events) {
+    if (choice.requiresSkill && event.facts.skillGains[choice.requiresSkill.id] > 0) ids.add(event.id);
+    if (choice.requiresPerson && event.facts.peopleMetAdded.includes(choice.requiresPerson)) ids.add(event.id);
+    if ((choice.with || []).some(personId => event.facts.with.includes(personId))) ids.add(event.id);
   }
+  if (choice.requiresMemory) ids.add(previous.memories.find(memory => memory.id === choice.requiresMemory).sourceEventId);
+  return [...ids];
 }
 
-/** Call only with a canonical or validated state. */
-function reduceAction(previous, actionId) {
-  const allowed = availability(previous, actionId);
+/** Internal reducer receives a canonical state, including retained prose snapshots. */
+function reduceChoice(previous, choiceId) {
+  const allowed = availability(previous, choiceId);
   if (!allowed.enabled) throw fail(allowed.code, allowed.reason);
-  const action = ACTION_BY_ID.get(actionId);
-  const state = JSON.parse(JSON.stringify(previous));
-  const round = state.round;
-  const beforeSkill = previous.skills[action.skill];
-  state.funds += allowed.netChange;
-  state.skills[action.skill] += allowed.skillGain;
-  const main = appendEvent(state, {
-    type: 'round.resolved', round, action: actionId,
+  const choice = CHOICE_BY_ID.get(choiceId);
+  const narrative = clone(getNarrative(clone(previous), choiceId));
+  if (!validNarrative(narrative)) throw fail('content_error', '这段校园故事暂时无法读取。');
+  if (!MEMORIES[choice.memoryId]) throw fail('content_error', '这段回忆的资料暂时不完整。');
+  const state = clone(previous);
+  const skillsBefore = { ...state.skills };
+  const skillGains = {};
+  for (const skillId of SKILL_IDS) {
+    const gain = choice.skillGains?.[skillId] || 0;
+    if (!Number.isInteger(gain) || gain < 0) throw fail('content_error', '这件事的成长资料暂时无法读取。');
+    state.skills[skillId] = Math.min(CONFIG.maxSkill, state.skills[skillId] + gain);
+    skillGains[skillId] = state.skills[skillId] - skillsBefore[skillId];
+  }
+  const peopleMetAdded = [...new Set(choice.meet || [])].filter(id => !state.peopleMet.includes(id));
+  state.peopleMet.push(...peopleMetAdded);
+  const flagsAdded = {};
+  for (const [key, value] of Object.entries(choice.flags || {})) {
+    if (typeof value !== 'boolean' && typeof value !== 'string') throw fail('content_error', '这件事的后续资料暂时无法读取。');
+    if (state.flags[key] !== value) flagsAdded[key] = value;
+    state.flags[key] = value;
+  }
+  const eventId = `${state.runId}:event:${state.events.length + 1}`;
+  const event = {
+    id: eventId,
+    sequence: state.events.length + 1,
+    type: 'choice.resolved',
+    turn: previous.turn,
+    semester: previous.semester,
     facts: {
-      title: allowed.title, skill: action.skill, kind: action.kind,
-      fundsBefore: previous.funds, fundsAfter: state.funds,
-      income: allowed.income, livingCost: allowed.livingCost, materialsCost: allowed.materialsCost, netChange: allowed.netChange,
-      skillBefore: beforeSkill, skillAfter: state.skills[action.skill], skillGain: allowed.skillGain,
+      choiceId,
+      kind: choice.kind,
+      semester: previous.semester,
+      slot: previous.slot,
+      skillsBefore,
+      skillsAfter: { ...state.skills },
+      skillGains,
+      peopleMetAdded,
+      with: [...new Set(choice.with || [])],
+      memoryId: choice.memoryId,
+      flagsAdded,
     },
-    textSnapshot: `第 ${round} 周，你${allowed.title}。收入 ${allowed.income} 元，材料 ${allowed.materialsCost} 元，日常开销 ${allowed.livingCost} 元，余量 ${state.funds} 元。${allowed.skillGain ? `${SKILL_NAMES[action.skill]}从 ${beforeSkill}/4 练到 ${state.skills[action.skill]}/4。` : ''}`,
-  });
-  if (allowed.skillGain) {
-    appendEvent(state, {
-      type: 'skill.gained', round, action: actionId,
-      facts: { skill: action.skill, before: beforeSkill, after: state.skills[action.skill], gain: allowed.skillGain },
-      textSnapshot: `${SKILL_NAMES[action.skill]}：${getSkillStage(beforeSkill)} → ${getSkillStage(state.skills[action.skill])}（${state.skills[action.skill]}/4）。`,
-      sourceEventIds: [main.id],
-    });
-  }
-  if (action.kind === 'task' && !state.completedTasks.includes(actionId)) {
-    state.completedTasks.push(actionId);
-    appendEvent(state, {
-      type: 'task.completed', round, action: actionId,
-      facts: { taskId: actionId, skill: action.skill },
-      textSnapshot: actionId === 'shop_shift' ? '第一次独立值班完成了：你自己接待读者、找书，收好一天的账。' : '你完成了第一块街角招牌。它挂在早餐摊前，成了有人每天会看到的画。',
-      sourceEventIds: [main.id, state.events.find(item => item.type === 'opportunity.unlocked' && item.action === actionId).id],
-    });
-  }
-  if (action.kind === 'milestone') {
-    state.identities.push(action.identity);
-    state.completedTasks.push(actionId);
-    appendEvent(state, {
-      type: 'identity.earned', round, action: actionId,
-      facts: { identity: action.identity, title: IDENTITY_NAMES[action.identity], artifact: actionId === 'shop_table' ? '周末主题书桌' : '住在这里：街巷小册' },
-      textSnapshot: actionId === 'shop_table' ? '你独立策划的周末书桌开放了。陈姐把你介绍为“书店搭档”；以后你可以自己负责这张书桌。' : '《住在这里》成册了。早餐摊老板把你介绍为“街巷画手”；以后你可以接自己的插画约稿。',
-      sourceEventIds: [main.id, state.events.find(item => item.type === 'opportunity.unlocked' && item.action === actionId).id],
-    });
-  }
-  unlockOpportunities(state, round);
-  state.round = round + 1;
-  if (round === RULES.maxRounds) {
-    state.status = 'ended';
-    appendEvent(state, {
-      type: 'life.completed', round,
-      facts: { funds: state.funds, skills: { ...state.skills }, identities: [...state.identities], completedTasks: [...state.completedTasks] },
-      textSnapshot: `八周到这里暂告一段落。书店事务${getSkillStage(state.skills.shop)}，街巷创作${getSkillStage(state.skills.art)}。${state.identities.length ? `你留下了${state.identities.map(id => IDENTITY_NAMES[id]).join('、')}的经历。` : '已经学会和实际做过的事，都留在这段生活里。'}`,
-      sourceEventIds: state.events.filter(item => item.type === 'round.resolved').map(item => item.id),
-    });
+    narrative,
+    textSnapshot: `${narrative.title}\n${narrative.paragraphs.join('\n')}${narrative.dialogue ? `\n${narrative.speaker || ''}：${narrative.dialogue}` : ''}`,
+    sourceEventIds: choiceSources(previous, choice),
+  };
+  state.events.push(event);
+  state.memories.push({ id: choice.memoryId, semester: previous.semester, sourceEventId: eventId });
+  state.turn += 1;
+  if (choice.kind === 'activity') {
+    if (state.slot < CONFIG.activitySlots) state.slot += 1;
+    else state.phase = 'campus';
+  } else if (state.semester < CONFIG.playableSemesters) {
+    state.semester += 1;
+    state.slot = 1;
+    state.phase = 'activity';
+  } else {
+    state.phase = 'ended';
   }
   return state;
 }
 
-export function applyAction(state, actionId, expectedRound = state?.round) {
+export function applyChoice(state, choiceId, expectedTurn = state?.turn) {
   const checked = validateSave(state);
   if (!checked.valid) throw fail('invalid_save', checked.error);
-  if (checked.state.status !== 'playing') throw fail('game_ended', '这八周已经结束，不能重复结算。');
-  if (!Number.isInteger(expectedRound) || expectedRound !== checked.state.round) throw fail('stale_round', '这一周已经变化，请使用当前周的选择。');
-  if (!ACTION_BY_ID.has(actionId)) throw fail('unknown_action', '没有这个行动。');
-  return reduceAction(checked.state, actionId);
+  if (checked.state.phase === 'ended') throw fail('game_ended', '大一的这段体验已经结束，可以翻翻回忆或重新开始。');
+  if (!Number.isInteger(expectedTurn) || expectedTurn !== checked.state.turn) throw fail('stale_turn', '这段日常已经变化，请使用眼前的选择。');
+  return reduceChoice(checked.state, choiceId);
 }
 
 function isJsonValue(value, ancestors = new Set(), depth = 0) {
@@ -216,7 +190,6 @@ function isJsonValue(value, ancestors = new Set(), depth = 0) {
   ancestors.delete(value);
   return valid;
 }
-
 function equalJson(left, right) {
   if (left === right) return true;
   if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
@@ -226,53 +199,49 @@ function equalJson(left, right) {
   return keys.length === otherKeys.length && keys.every((key, index) => key === otherKeys[index] && equalJson(left[key], right[key]));
 }
 
-/** Checks internal consistency, not identity or anti-cheat authenticity. */
+/** Verifies recorded facts by replay. It is not identity or anti-cheat authentication. */
 export function validateSave(candidate) {
   const invalid = error => ({ valid: false, state: null, error });
   try {
     const value = typeof candidate === 'string' ? JSON.parse(candidate) : candidate;
-    if (!value || typeof value !== 'object' || Array.isArray(value) || !isJsonValue(value)) return invalid('这份记录无法读取，可以重新开始。');
-    if (value.schemaVersion !== RULES.schemaVersion || value.rulesVersion !== RULES.version) return invalid('这份记录属于不同的试玩版本，旧记录不会被改写，请开始新的八周。');
-    if (typeof value.lifeId !== 'string' || !/^[A-Za-z0-9:_-]{5,128}$/.test(value.lifeId)) return invalid('这份记录的角色标识已损坏。');
-    if (!Array.isArray(value.events) || value.events.length > 40) return invalid('这份记录的事件清单已损坏。');
-    let canonical = initialState(value.scenarioId, value.lifeId);
-    const choices = value.events.filter(item => item && item.type === 'round.resolved');
-    if (choices.length > RULES.maxRounds) return invalid('这份记录包含重复的周次。');
-    for (const event of choices) {
-      if (event.round !== canonical.round || !ACTION_BY_ID.has(event.action)) return invalid('这份记录的选择顺序已损坏。');
-      canonical = reduceAction(canonical, event.action);
+    if (!value || typeof value !== 'object' || Array.isArray(value) || !isJsonValue(value)) return invalid('这份校园记录暂时无法读取。');
+    if (value.schemaVersion !== CONFIG.schemaVersion || value.rulesVersion !== CONFIG.version) return invalid('这份记录属于另一个试玩版本，原记录不会被改写。');
+    if (typeof value.runId !== 'string' || !/^[A-Za-z0-9:_-]{8,128}$/.test(value.runId)) return invalid('这份记录的角色标识已损坏。');
+    if (!Array.isArray(value.events) || value.events.length > MAX_CHOICES) return invalid('这份记录包含重复或损坏的日常。');
+    let canonical = initialState(value.runId);
+    for (const event of value.events) {
+      if (!event || event.type !== 'choice.resolved' || event.turn !== canonical.turn || !CHOICE_BY_ID.has(event.facts?.choiceId)) return invalid('这份记录的选择顺序已损坏。');
+      canonical = reduceChoice(canonical, event.facts.choiceId);
     }
-    if (value.events.length !== canonical.events.length) return invalid('这份记录的事件清单不完整或存在重复。');
     for (let index = 0; index < canonical.events.length; index += 1) {
-      const snapshot = value.events[index]?.textSnapshot;
-      if (typeof snapshot !== 'string' || !snapshot.trim() || snapshot.length > 2000) return invalid('这份记录的事件文字已损坏。');
-      canonical.events[index].textSnapshot = snapshot;
+      const old = value.events[index];
+      if (!validNarrative(old.narrative) || typeof old.textSnapshot !== 'string' || !old.textSnapshot.trim() || old.textSnapshot.length > 5000) return invalid('这份记录的回忆文字已损坏。');
+      // A content wording edit must not rewrite a player's already lived moments.
+      canonical.events[index].narrative = clone(old.narrative);
+      canonical.events[index].textSnapshot = old.textSnapshot;
     }
-    if (!equalJson(value, canonical)) return invalid('这份记录的资金、能力或经历不一致，请重新开始。');
+    if (!equalJson(value, canonical)) return invalid('这份记录的本领、同伴或回忆不一致，请开始新的大一。');
     return { valid: true, state: canonical, error: null };
-  } catch { return invalid('这份记录无法读取，可以重新开始。'); }
+  } catch { return invalid('这份校园记录暂时无法读取，可以开始新的一年。'); }
 }
 
 export function getSummary(state) {
   const checked = validateSave(state);
   if (!checked.valid) throw fail('invalid_save', checked.error);
   const current = checked.state;
-  const actions = current.events.filter(item => item.type === 'round.resolved').map(item => ({ id: item.id, round: item.round, action: item.action, ...item.facts, text: item.textSnapshot }));
   return {
-    funds: current.funds,
-    initialFunds: scenarioById(current.scenarioId).funds,
-    fundsChange: current.funds - scenarioById(current.scenarioId).funds,
+    programYears: current.programYears,
+    playableSemesters: CONFIG.playableSemesters,
+    semestersCompleted: current.phase === 'ended' ? CONFIG.playableSemesters : current.semester - 1,
+    choicesMade: current.events.length,
     skills: { ...current.skills },
-    skillStages: { shop: getSkillStage(current.skills.shop), art: getSkillStage(current.skills.art) },
-    completedTasks: [...current.completedTasks],
-    identities: [...current.identities],
-    identityTitles: current.identities.map(id => IDENTITY_NAMES[id]),
-    opportunities: current.opportunities,
-    totalEarned: actions.reduce((sum, action) => sum + action.income, 0),
-    totalLivingCosts: actions.length * RULES.livingCost,
-    totalMaterialsCosts: actions.reduce((sum, action) => sum + action.materialsCost, 0),
-    actions,
-    events: current.events,
-    status: current.status,
+    skillStages: Object.fromEntries(SKILL_IDS.map(id => [id, SKILLS[id].stages[current.skills[id]]])),
+    peopleMet: [...current.peopleMet],
+    memories: current.memories.map(memory => {
+      const event = current.events.find(item => item.id === memory.sourceEventId);
+      return { ...clone(MEMORIES[memory.id]), ...memory, caption: event.narrative.memoryCaption || MEMORIES[memory.id].caption, narrative: clone(event.narrative) };
+    }),
+    events: clone(current.events),
+    phase: current.phase,
   };
 }
