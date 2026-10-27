@@ -80,6 +80,15 @@ function showOrigin(eventId) {
   if (!event) return;
   openDetail(event.title || '那天换了一种做法', `<p class="eyebrow">${e(dateLabel(event.day))}</p><p>${e(event.text)}</p>`);
 }
+function chooseFirstWeek() {
+  const options = [
+    {id:'club',title:'去活动室看看',description:'看看别人怎样排练和布场，碰到能搭手的就试一试。'},
+    {id:'walk',title:'沿湖走走，随手拍几张',description:'先熟悉校园，看看哪些地方会让自己停下来。'},
+    {id:'friends',title:'和室友一起吃饭、聊聊',description:'课后多和阿禾待在一起，也可以各自忙自己的事。'},
+    {id:'easy',title:'暂时不安排，随心过',description:'照常上课、吃饭，空下来再看想做什么。'},
+  ];
+  openDetail('开学这周，课余想怎么过？', `<p>先试一种日常，之后随时可以调整。</p><div class="planning-options">${options.map(option => `<button type="button" class="story-choice" data-start-focus="${option.id}"><span>›</span><span><strong>${e(option.title)}</strong><small>${e(option.description)}</small></span></button>`).join('')}</div>`);
+}
 function peoplePanel() {
   return `<section class="people-panel"><h2>渐渐认得的人</h2><div class="people-list">${game.peopleMet.map(id => `<button type="button" data-person="${id}" class="person-button">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small></span></button>`).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
 }
@@ -174,6 +183,7 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
   try {
+    if (button.dataset.startFocus) {game = setFocus(game,button.dataset.startFocus); started = true; running = true; accumulated = 0; lastTick = performance.now(); detailDialog.close(); persist(); render(); return;}
     if (button.dataset.focus) {update(setFocus(game,button.dataset.focus)); focusOpen = false; document.querySelector('#focus-settings').open = false; return;}
     if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
     if (button.dataset.choice) {pause(); logFilter = 'all'; unseen = 0; update(choose(game,button.dataset.choice,game.revision),{latest:true}); if(!game.pending) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
@@ -187,7 +197,7 @@ document.addEventListener('click', event => {
     if (button.dataset.resumeProject) {const project = getProjects(game).find(item => item.id === button.dataset.resumeProject); let next = setFocus(game,project.focusId); if(project.approachId) next = setPractice(next,project.requiresSkill.id,project.approachId,next.revision); update(next,{latest:true}); return;}
     if (button.dataset.filter) {logFilter = button.dataset.filter; render({latest:true}); return;}
     switch(button.dataset.action) {
-      case 'play': started = true; running = !running; accumulated = 0; lastTick = performance.now(); persist(); render(); break;
+      case 'play': if(!started && game.focus === 'easy'){chooseFirstWeek();break;} started = true; running = !running; accumulated = 0; lastTick = performance.now(); persist(); render(); break;
       case 'forward': {
         started = true; pause();
         // Preserve the chance to act when a skill or preparation changes.
