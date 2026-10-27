@@ -198,7 +198,7 @@ test('all three story routes and authored echoes can occur in one coherent autum
   state = choose(state, 'lights_talk');
   state = advanceDays(state, CONFIG.totalDays);
   assert.equal(state.phase, 'ended');
-  assert.deepEqual(state.resolvedStories, STORIES.map(story => story.id));
+  assert.deepEqual(state.resolvedStories, STORIES.filter(story => !story.requiresProject).map(story => story.id));
   assert.equal(AFTER_LOGS.every(log => state.events.some(event => event.contentId === log.id)), true);
   assert.equal(CALENDAR_LOGS.every(log => state.events.some(event => event.contentId === log.id)), true);
   assert.equal(validateSave(state).valid, true);

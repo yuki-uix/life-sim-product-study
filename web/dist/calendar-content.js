@@ -1,7 +1,7 @@
 /** Fictional campus content. No engine, DOM, network or random generation. */
 export const CONFIG = Object.freeze({
-  version: '0.4.0',
-  schemaVersion: 4,
+  version: '0.5.0',
+  schemaVersion: 5,
   totalDays: 91,
   title: '大学慢慢来',
   programYears: 4,
@@ -44,6 +44,41 @@ export const FOCUSES = Object.freeze([
     id: 'friends', title: '和室友待着',
     description: '一起吃饭、闲聊，也各自做各自的事。',
     location: 'dorm', skill: null,
+  }),
+]);
+
+
+/** Abilities describe real actions and scene choices, rather than another score. */
+export const CAPABILITIES = Object.freeze({
+  record: Object.freeze([
+    Object.freeze({ level: 1, title: '试着拍一组照片', description: '可以自己发起一组校园照片，在接下来的散步里慢慢准备。' }),
+    Object.freeze({ level: 2, title: '把照片放在一起给人看', description: '完成自己的组照后，秋天有机会和林野商量一次照片墙。' }),
+    Object.freeze({ level: 3, title: '自己安排照片墙', description: '遇到照片墙的机会时，可以自己选图、排顺序，带同伴一起试挂。' }),
+  ]),
+  organize: Object.freeze([
+    Object.freeze({ level: 1, title: '试着准备一场放映', description: '可以自己发起小放映的准备，在之后去活动室时慢慢试片、试设备。' }),
+    Object.freeze({ level: 2, title: '和同伴把放映办起来', description: '准备好自己的片单和场地方案后，有机会与小满合办一场。' }),
+    Object.freeze({ level: 3, title: '自己安排这一场', description: '遇到自己的放映机会时，可以独立排流程，带新同学一起布置。' }),
+  ]),
+});
+
+/** A project is deliberately started, then prepared through sustained daily life. */
+export const PROJECTS = Object.freeze([
+  Object.freeze({
+    id: 'photo_set', title: '拍一组校园照片',
+    description: '先找一个想拍的题目，再用接下来的散步慢慢凑成一组。',
+    focusId: 'walk', requiresSkill: Object.freeze({ id: 'record', min: 1 }),
+    duration: 7, personId: 'linye', location: 'lake',
+    startText: '你在手机里建了一个相册。接下来的散步，想试着围绕一个题目拍几张，而不只是随手存下路过的东西。',
+    completeText: '相册里留下了一组校园照片。你删了几张重复的，又把两张挪了位置，暂时还没想好要给谁看。',
+  }),
+  Object.freeze({
+    id: 'host_screen', title: '筹一场小放映',
+    description: '试着挑一部片子、试好设备，把自己的想法慢慢准备妥当。',
+    focusId: 'club', requiresSkill: Object.freeze({ id: 'organize', min: 1 }),
+    duration: 7, personId: 'xiaoman', location: 'club',
+    startText: '你记下几个想放的片名。之后去活动室，准备顺手试试设备，看看哪部片子和这个地方合适。',
+    completeText: '你试过了声音和投影，片单上也圈定了一部。几排椅子怎么放画了个草图，真正开场的时间还没有定。',
   }),
 ]);
 
@@ -189,9 +224,72 @@ export const STORIES = Object.freeze([
       },
     ],
   },
+  {
+    id: 'photo_wall', title: '那组照片，要不要贴出来？',
+    fromDay: 55, toDay: 82, requiresFocus: null, minDays: 0,
+    requiresProject: 'photo_set', requiresSkill: { id: 'record', min: 2 },
+    location: 'hall', personId: 'linye',
+    paragraphs: [
+      '你整理好的那组校园照片还放在相册里。林野看过后，提起教学楼走廊有一块空着的展板，刚问到可以借几天。',
+      '他把展板的尺寸发过来。照片都在你手里，这回可以自己决定放哪些、怎样放，也可以先和他一起试。',
+    ],
+    choices: [
+      {
+        id: 'wall_arrange', title: '自己选图排顺序，带林野试挂',
+        description: '已经有了取舍的把握，想让这一组按自己的方式被看见。',
+        requiresSkill: { id: 'record', min: 3 },
+        result: '你把几张照片排成从清晨到入夜的顺序，和林野量着展板贴上去。路过的人偶尔停一下，有人问其中一张是在哪儿拍的。',
+        flags: { photoWallArranged: true },
+      },
+      {
+        id: 'wall_together', title: '和林野一起试着排一排',
+        description: '照片由自己挑，留白和位置再一起商量。',
+        result: '你挑出想留下的几张，和林野在地上摆了几轮。有一处怎么排都觉得挤，最后少放了一张，贴上去反而舒服些。',
+        flags: { photoWallShared: true },
+      },
+      {
+        id: 'wall_later', title: '这组先自己留着',
+        description: '现在还不想拿出去，告诉林野这次先不借展板。',
+        result: '你把相册又翻了一遍，告诉林野这次先不贴了。他说好，下次有别的想法再聊。照片仍按原来的顺序留在手机里。',
+        flags: {},
+      },
+    ],
+  },
+  {
+    id: 'own_screen', title: '这次的放映，可以由你来安排',
+    fromDay: 53, toDay: 80, requiresFocus: null, minDays: 0,
+    requiresProject: 'host_screen', requiresSkill: { id: 'organize', min: 2 },
+    location: 'club', personId: 'xiaoman',
+    paragraphs: [
+      '前阵子准备的片单和布置草图还在。小满说，活动室这个周末空着，如果你还想放那部片子，可以把时间定下来。',
+      '她能来搭把手，另有两个新同学愿意帮忙。设备已经试过了，接下来怎么安排，需要你拿个主意。',
+    ],
+    choices: [
+      {
+        id: 'own_screen_lead', title: '自己排流程，带新同学一起布置',
+        description: '知道哪一步容易卡住，先把开场前的事分给几个人。',
+        requiresSkill: { id: 'organize', min: 3 },
+        result: '你把试音、挪椅子和门口指路分开安排，带新同学走了一遍。开场前仍忙乱了一阵，等片头亮起，才发现自己还没找座位。',
+        flags: { ownScreenLed: true },
+      },
+      {
+        id: 'own_screen_together', title: '和小满搭档，把这一场办起来',
+        description: '片单和场地按自己的想法来，不熟悉的地方再问问她。',
+        result: '你和小满重新看了草图，把几排椅子拉开。开场时投影没有声音，她提醒你切了输入源；等声音响起来，你们各找了个空位坐下。',
+        flags: { ownScreenShared: true },
+      },
+      {
+        id: 'own_screen_later', title: '准备先留着，这次不办',
+        description: '告诉小满还想再等等，不把空教室变成一项必须完成的事。',
+        result: '你说这次先不定了，小满把教室留给了别的安排。片单和草图收进包里，接下来去活动室时，还是照常和大家待着。',
+        flags: {},
+      },
+    ],
+  },
 ].map(story => Object.freeze({
   ...story,
   paragraphs: Object.freeze(story.paragraphs),
+  ...(story.requiresSkill ? { requiresSkill: Object.freeze(story.requiresSkill) } : {}),
   choices: Object.freeze(story.choices.map(choice => Object.freeze({
     ...choice,
     flags: Object.freeze(choice.flags),

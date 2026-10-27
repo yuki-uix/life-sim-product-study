@@ -1,10 +1,13 @@
 /** Calendar simulation. Pure rules: no DOM, clock, network, or random outcomes. */
-import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, weeklyText } from './calendar-content.js';
+import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, weeklyText } from './calendar-content.js?v=0.5.0';
+
+import { validateSave as validateLegacySave } from './calendar-engine-v4.js';
 
 export { CONFIG };
 const FOCUS_IDS = FOCUSES.map(focus => focus.id);
 const STORY_BY_ID = new Map(STORIES.map(story => [story.id, story]));
 const SKILL_IDS = Object.keys(SKILLS);
+const PROJECT_BY_ID = new Map(PROJECTS.map(project => [project.id, project]));
 const LOCATIONS = new Set(['gate', 'dorm', 'lake', 'club', 'hall']);
 const MAX_COMMANDS = 2048;
 let fallbackId = 0;
@@ -24,7 +27,7 @@ function initialState(runId) {
     weekFocusDays: Object.fromEntries(FOCUS_IDS.map(id => [id, 0])),
     skills: Object.fromEntries(SKILL_IDS.map(id => [id, 0])),
     peopleMet: ['ahe'], flags: {}, events: [], favorites: [], pending: null,
-    resolvedStories: [], commands: [],
+    resolvedStories: [], commands: [], project: null, completedProjects: [],
   };
   for (const entry of CALENDAR_LOGS.filter(item => item.day === 0)) {
     appendEvent(state, { kind: entry.kind || 'calendar', title: '九月，开学了', text: entry.text, location: entry.location, contentId: entry.id });
@@ -46,13 +49,19 @@ function sourcesForStory(state, story) {
   if (story.requiresFocus) {
     for (const event of state.events) if (event.focusId === story.requiresFocus || (event.kind === 'meeting' && event.personId === story.personId)) ids.add(event.id);
   }
+  if (story.requiresProject) {
+    const project = state.completedProjects.find(item => item.id === story.requiresProject);
+    if (project) ids.add(project.sourceEventId);
+  }
   return [...ids];
 }
 function canOpenStory(state, story) {
   return !state.resolvedStories.includes(story.id)
     && state.day >= story.fromDay && state.day <= story.toDay
     && (!story.requiresFocus || state.focusDays[story.requiresFocus] >= story.minDays)
-    && (!story.personId || state.peopleMet.includes(story.personId));
+    && (!story.personId || state.peopleMet.includes(story.personId))
+    && (!story.requiresProject || state.completedProjects.some(project => project.id === story.requiresProject))
+    && (!story.requiresSkill || state.skills[story.requiresSkill.id] >= story.requiresSkill.min);
 }
 function openAvailableStory(state) {
   if (state.pending || state.phase === 'ended') return;
@@ -98,6 +107,7 @@ function advanceOneDay(state) {
       appendEvent(state, { kind: 'daily', text: entry.text, location: entry.location, contentId: entry.id, sourceEventIds: source ? [source.id] : [] });
     }
   }
+  progressProject(state);
   openAvailableStory(state);
   if (state.day >= CONFIG.totalDays - 1 && !state.pending) state.phase = 'ended';
 }
@@ -107,6 +117,74 @@ function reduceAdvance(previous, count) {
   if (state.pending || state.phase === 'ended') return state;
   for (let i = 0; i < count && !state.pending && state.phase === 'living'; i += 1) advanceOneDay(state);
   recordCommand(state, { type: 'time', days: count });
+  return state;
+}
+function assertRevision(state, expectedRevision) {
+  if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision) throw fail('stale_revision', '眼前的生活已经变化，请使用当前选项。');
+}
+function projectOptions(state) {
+  return PROJECTS.map(project => {
+    const completed = state.completedProjects.some(item => item.id === project.id);
+    const active = state.project?.id === project.id;
+    const status = completed ? 'completed' : active ? 'active' : 'available';
+    let reason = '';
+    if (completed) reason = '这件准备已经做过了。';
+    else if (active) reason = state.focus === project.focusId ? '正在慢慢做。' : '换了课余安排，进度先留在这里。';
+    else if (state.phase === 'ended') reason = '这段秋季生活已经结束。';
+    else if (state.pending) reason = '先回应眼前的事。';
+    else if (state.project) reason = '先做完或放下手头的这件事。';
+    else if (state.skills[project.requiresSkill.id] < project.requiresSkill.min) reason = `先让${SKILLS[project.requiresSkill.id].name}达到“${SKILLS[project.requiresSkill.id].stages[project.requiresSkill.min]}”。`;
+    else if (project.personId && !state.peopleMet.includes(project.personId)) reason = `还没有认识${PEOPLE[project.personId].name}。`;
+    else if (state.day + project.duration > CONFIG.totalDays - 1) reason = '这个秋天剩下的时间不够慢慢准备了。';
+    return { ...clone(project), status: reason && !completed && !active ? 'locked' : status,
+      enabled: !reason, reason, progress: completed ? project.duration : active ? state.project.progress : 0,
+      paused: active && state.focus !== project.focusId };
+  });
+}
+function reduceStartProject(previous, projectId, expectedRevision = previous.revision) {
+  assertRevision(previous, expectedRevision);
+  const project = PROJECT_BY_ID.get(projectId);
+  if (!project) throw fail('unknown_project', '没有这件想试的事。');
+  const option = projectOptions(previous).find(item => item.id === projectId);
+  if (!option.enabled) throw fail('project_unavailable', option.reason);
+  const state = clone(previous);
+  state.project = { id: projectId, progress: 0, startDay: state.day };
+  state.focus = project.focusId;
+  recordCommand(state, { type: 'project.start', projectId });
+  return state;
+}
+function reduceCancelProject(previous, expectedRevision = previous.revision) {
+  assertRevision(previous, expectedRevision);
+  if (previous.phase === 'ended') throw fail('game_ended', '这段秋季生活已经结束。');
+  if (previous.pending) throw fail('pending_story', '先回应眼前的事，再调整手头的安排。');
+  if (!previous.project) throw fail('no_active_project', '现在没有正在准备的事。');
+  const state = clone(previous);
+  state.project = null;
+  recordCommand(state, { type: 'project.cancel' });
+  return state;
+}
+function progressProject(state) {
+  if (!state.project) return;
+  const project = PROJECT_BY_ID.get(state.project.id);
+  if (state.focus !== project.focusId) return;
+  state.project.progress += 1;
+  if (state.project.progress < project.duration) return;
+  const startDay = state.project.startDay;
+  const sources = state.events.filter(event => event.day <= startDay && (event.focusId === project.focusId || event.personId === project.personId)).map(event => event.id);
+  const event = appendEvent(state, { kind: 'project', title: project.title, text: project.completeText,
+    location: project.location, projectId: project.id, focusId: project.focusId, sourceEventIds: sources });
+  state.completedProjects.push({ id: project.id, day: state.day, sourceEventId: event.id });
+  state.project = null;
+}
+function reduceNextMoment(previous) {
+  const state = clone(previous);
+  if (state.pending || state.phase === 'ended') return state;
+  const beforeSkills = { ...state.skills }, beforeProjects = state.completedProjects.length;
+  for (let i = 0; i < CONFIG.totalDays && !state.pending && state.phase === 'living'; i += 1) {
+    advanceOneDay(state);
+    if (state.completedProjects.length !== beforeProjects || SKILL_IDS.some(id => state.skills[id] !== beforeSkills[id])) break;
+  }
+  recordCommand(state, { type: 'moment' });
   return state;
 }
 function choicesFor(state) {
@@ -155,6 +233,20 @@ function checkedState(candidate) {
 export function setFocus(state, focusId) { return reduceFocus(checkedState(state), focusId); }
 export function advanceDays(state, count = 1) { return reduceAdvance(checkedState(state), count); }
 export function getChoices(state) { return choicesFor(checkedState(state)); }
+export function getProjects(state) { return projectOptions(checkedState(state)); }
+export function startProject(state, projectId, expectedRevision = state?.revision) { return reduceStartProject(checkedState(state), projectId, expectedRevision); }
+export function cancelProject(state, expectedRevision = state?.revision) { return reduceCancelProject(checkedState(state), expectedRevision); }
+export function advanceToNextMoment(state) { return reduceNextMoment(checkedState(state)); }
+export function getGrowth(candidate) {
+  const state = checkedState(candidate);
+  return SKILL_IDS.map(skillId => {
+    const level = state.skills[skillId], days = state.focusDays[skillId === 'record' ? 'walk' : 'club'];
+    const nextAt = [7, 18, 35][level] ?? null;
+    return { skillId, name: SKILLS[skillId].name, level, stage: SKILLS[skillId].stages[level], days,
+      nextAt, remaining: nextAt === null ? 0 : nextAt - days,
+      capabilities: (CAPABILITIES[skillId] || []).map(item => ({ ...clone(item), unlocked: level >= item.level })) };
+  });
+}
 export function choose(state, choiceId, expectedRevision = state?.revision) { return reduceChoice(checkedState(state), choiceId, expectedRevision); }
 export function toggleFavorite(candidate, eventId) {
   const state = clone(checkedState(candidate));
@@ -201,6 +293,9 @@ export function validateSave(candidate) {
       if (command.type === 'focus') canonical = reduceFocus(canonical, command.focusId);
       else if (command.type === 'time') canonical = reduceAdvance(canonical, command.days);
       else if (command.type === 'choice') canonical = reduceChoice(canonical, command.choiceId);
+      else if (command.type === 'project.start') canonical = reduceStartProject(canonical, command.projectId);
+      else if (command.type === 'project.cancel') canonical = reduceCancelProject(canonical);
+      else if (command.type === 'moment') canonical = reduceNextMoment(canonical);
       else return invalid('这份记录包含未知操作。');
       if (canonical.revision !== revision + 1) return invalid('这份记录包含重复或过时操作。');
     }
@@ -226,5 +321,29 @@ export function getSummary(candidate) {
     peopleMet: [...state.peopleMet], events: clone(state.events),
     favorites: state.favorites.map(id => clone(state.events.find(event => event.id === id))),
     storiesCompleted: state.resolvedStories.length, phase: state.phase,
+    project: clone(state.project), completedProjects: clone(state.completedProjects),
   };
+}
+
+/** Preserve a verified v0.4 life; never infer a project or retrospectively add new opportunities. */
+export function migrateLegacySave(candidate) {
+  const legacy = validateLegacySave(candidate);
+  if (!legacy.valid) return { valid: false, state: null, error: legacy.error };
+  try {
+    const old = legacy.state;
+    let state = initialState(old.runId);
+    for (const command of old.commands) {
+      if (command.type === 'focus') state = reduceFocus(state, command.focusId);
+      else if (command.type === 'time') state = reduceAdvance(state, command.days);
+      else if (command.type === 'choice') state = reduceChoice(state, command.choiceId);
+    }
+    if (state.day !== old.day || state.events.length !== old.events.length) throw new Error('legacy mismatch');
+    for (let index = 0; index < state.events.length; index += 1) {
+      if (state.events[index].id !== old.events[index].id) throw new Error('legacy event mismatch');
+      state.events[index].text = old.events[index].text;
+      if (old.events[index].title !== undefined) state.events[index].title = old.events[index].title;
+    }
+    state.favorites = [...old.favorites];
+    return validateSave(state);
+  } catch { return { valid: false, state: null, error: '这份旧记录暂时无法接续，原记录不会被覆盖。' }; }
 }
