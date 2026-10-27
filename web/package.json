@@ -1,11 +1,11 @@
 {
   "name": "campus-slowly",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dist",
-    "test": "node --test tests/calendar.test.mjs tests/growth.test.mjs",
+    "test": "node --test tests/calendar.test.mjs tests/growth.test.mjs tests/history.test.mjs",
     "test:legacy": "node --test tests/engine.test.mjs tests/story.test.mjs"
   }
 }

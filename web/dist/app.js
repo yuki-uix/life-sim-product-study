@@ -1,9 +1,10 @@
-import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave } from './calendar-engine.js?v=0.5.0';
-import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.5.0';
+import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject } from './calendar-engine.js?v=0.6.0';
+import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.6.0';
 import { campusScene, avatar } from './campus-art.js';
+import { getStoryPresentation as getLegacyStoryPresentation } from './calendar-content-v5.js';
 
-const STORAGE_KEY = 'campus-slowly.save.v5';
-const LEGACY_KEY = 'campus-slowly.save.v4';
+const STORAGE_KEY = 'campus-slowly.save.v6';
+const LEGACY_KEYS = ['campus-slowly.save.v5','campus-slowly.save.v4'];
 const main = document.querySelector('#main');
 const restartDialog = document.querySelector('#restart-dialog');
 const detailDialog = document.querySelector('#detail-dialog');
@@ -17,7 +18,7 @@ let unseen = 0, toastTimer, growthOpen = false;
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const legacy = raw ? null : localStorage.getItem(LEGACY_KEY);
+    const legacy = raw ? null : LEGACY_KEYS.map(key => localStorage.getItem(key)).find(Boolean);
     if (raw || legacy) {
       const saved = JSON.parse(raw || legacy);
       const checked = raw ? validateSave(saved.game) : migrateLegacySave(saved.game);
@@ -51,10 +52,33 @@ function focusPanel() {
   const focus = focusItem();
   return `<section class="focus-panel"><details id="focus-settings" ${focusOpen ? 'open' : ''}><summary><span class="eyebrow">最近，课余常做什么</span><strong>${e(focus.title)}</strong><span class="change-label">${game.pending ? '先处理眼前的事' : '调整 ▾'}</span></summary><div class="focus-options" role="group" aria-label="近期生活重心">${FOCUSES.map(item => `<button type="button" data-focus="${item.id}" class="focus-option" aria-pressed="${game.focus === item.id}" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}><span>${e(item.title)}</span><small>${e(item.description)}</small></button>`).join('')}</div></details><p class="focus-note">${e(focus.description)}<br>这个安排会持续，可以随时换。</p></section>`;
 }
+function growthSignature(state) {
+  return JSON.stringify(getGrowth(state).map(item => ({ready:item.level >= 1, abilities:(item.practiceOptions || []).flatMap(style => style.capabilities.filter(capability => capability.unlocked).map(capability => `${style.id}:${capability.min}`))})));
+}
+function learnedText(item) {
+  if (!item.practice) return item.level ? '下次想怎样试，可以自己决定。' : '先去接触，还没有固定的练法。';
+  const learned = item.practice.capabilities.filter(capability => capability.unlocked);
+  return learned.length ? learned.map(capability => capability.title).join(' · ') : `接下来试着${item.practice.action}。`;
+}
 function growthPanel() {
   const growth = getGrowth(game), projects = getProjects(game);
   const active = game.project ? projects.find(item => item.id === game.project.id) : null;
-  return `<section class="growth-panel" aria-label="角色成长"><details id="growth-details" ${growthOpen ? 'open' : ''}><summary><span class="growth-heading">慢慢学会的事 <small>能做什么 ▾</small></span><div class="growth-overview">${growth.map(item => `<div class="growth-overview-item"><span>${e(item.name)} <b>${e(item.stage)}</b></span><progress max="${item.nextAt || 35}" value="${item.days}" aria-label="${e(item.name)}：${item.days}天，${item.nextAt ? `距下一阶段${item.remaining}天` : '已达到当前最高阶段'}"></progress><small>${item.nextAt ? `再${item.skillId === 'record' ? '散步记录' : '参加社团'} ${item.remaining} 天` : '已经有自己的办法'}</small></div>`).join('')}</div></summary><div class="capability-list">${growth.map(item => `<div class="capability-track"><h3>${e(item.name)} · ${e(item.stage)}</h3>${item.capabilities.map(capability => `<p class="capability ${capability.unlocked ? 'unlocked' : ''}"><span>${capability.unlocked ? '✓' : '·'}</span><span><strong>${e(capability.title)}</strong><small>${e(capability.description)}</small></span></p>`).join('')}</div>`).join('')}</div></details>${active ? `<div class="project-active"><p class="eyebrow">${active.paused ? '这件事先留着' : '正在慢慢准备'}</p><h3>${e(active.title)}</h3><progress max="${active.duration}" value="${active.progress}" aria-label="准备进度 ${active.progress}/${active.duration}"></progress><p>${active.progress} / ${active.duration} 天 · ${active.paused ? '换了生活重心，准备暂时停着。' : `在${e(FOCUSES.find(focus => focus.id === active.focusId).title)}的日子里，顺着往下做。`}</p>${active.paused && !game.pending && game.phase !== 'ended' ? `<button type="button" class="text-button" data-resume-project="${active.id}">接着准备这件事 ›</button>` : ''}</div>` : ''}<div class="project-options">${projects.map(project => project.status === 'available' ? `<article class="project-option"><h3>${e(project.title)}</h3><p>${e(project.description)}</p><small>需要接下来 ${project.duration} 天的${project.focusId === 'walk' ? '散步记录' : '社团时间'}</small><button type="button" class="secondary-button" data-project="${project.id}" ${!project.enabled || invalidSave ? 'disabled' : ''}>试着做这件事 ›</button>${!project.enabled ? `<small>${e(project.reason)}</small>` : ''}</article>` : project.status === 'locked' ? `<p class="project-locked"><strong>${e(project.title)}</strong><br>${e(project.reason)}</p>` : project.status === 'completed' ? `<p class="project-done">已准备过：${e(project.title)}。${game.phase === 'ended' ? '这段经历留在秋天里。' : '带着准备和本领，看看接下来会遇见什么。'}</p>` : '').join('')}</div></section>`;
+  return `<section class="growth-panel" aria-label="角色成长"><details id="growth-details" ${growthOpen ? 'open' : ''}><summary><span class="growth-heading">经历，慢慢变成做法 <small>展开看看 ▾</small></span><div class="growth-overview">${growth.map(item => `<div class="growth-overview-item"><span>${e(item.name)} <b>${e(item.practice?.name || item.stage)}</b></span><small>${e(learnedText(item))}</small></div>`).join('')}</div></summary><div class="capability-list">${growth.map(item => `<div class="capability-track"><h3>${e(item.name)} · ${e(item.stage)}</h3>${item.practice ? `<p class="practice-cause">${e(item.practice.sourceText || '从之前的一次选择开始，最近常这样试。')}${item.practice.sourceEventId ? `<button type="button" class="text-button" data-origin="${e(item.practice.sourceEventId)}">翻回那一天 ›</button>` : ''}</p>` : ''}${(item.practiceOptions || []).filter(style => style.days > 0).map(style => `<div class="practiced-style"><strong>${e(style.name)}${item.practice?.styleId === style.id ? ' · 最近常练' : ' · 也曾试过'}</strong>${style.capabilities.map(capability => `<p class="capability ${capability.unlocked ? 'unlocked' : ''}"><span>${capability.unlocked ? '✓' : '·'}</span><span><strong>${e(capability.title)}</strong><small>${e(capability.description)}</small></span></p>`).join('')}</div>`).join('') || '<p class="practice-cause">本领的方向，要在实际尝试里慢慢长出来。</p>'}${item.level >= 1 && !game.pending && game.phase !== 'ended' ? `<button type="button" class="text-button" data-practice-skill="${item.skillId}">下次想怎么试 ›</button>` : ''}</div>`).join('')}</div></details>${active ? `<div class="project-active"><p class="eyebrow">${active.paused ? '这件准备先留着' : '正在慢慢试'}</p><h3>${e(active.title)}</h3>${active.approach ? `<p class="project-approach">当时选的是：${e(active.approach.title)}</p>` : ''}<progress max="${active.duration}" value="${active.progress}" aria-label="准备进度 ${active.progress}/${active.duration}"></progress><p>${active.paused ? '最近在练别的，这件事的进度仍留着。' : active.progress < 3 ? '刚刚动手，还在找合适的办法。' : active.progress < 6 ? '有些地方渐渐顺手，也还有东西想调整。' : '正在把手边的东西理一理。'}</p>${active.paused && !game.pending && game.phase !== 'ended' ? `<button type="button" class="text-button" data-resume-project="${active.id}">按原来的方法接着准备 ›</button>` : ''}${!game.pending && game.phase !== 'ended' ? '<button type="button" class="text-button cancel-project" data-action="cancel-project">先放下这件准备</button>' : ''}</div>` : ''}<div class="project-options">${projects.map(project => project.status === 'available' ? `<article class="project-option"><h3>${e(project.title)}</h3><p>${e(project.description)}</p><button type="button" class="secondary-button" data-plan-project="${project.id}" ${!project.enabled || invalidSave ? 'disabled' : ''}>想从哪里做起 ›</button>${!project.enabled ? `<small>${e(project.reason)}</small>` : ''}</article>` : project.status === 'locked' ? `<p class="project-locked"><strong>${e(project.title)}</strong><br>${e(project.reason)}</p>` : project.status === 'completed' ? `<p class="project-done">做过：${e(project.title)}${project.approach ? ` · ${e(project.approach.title)}` : ''}。</p>` : '').join('')}</div></section>`;
+}
+function planProject(id) {
+  const project = getProjects(game).find(item => item.id === id);
+  if (!project?.enabled) return;
+  openDetail(`${project.title}，先从哪里做起？`, `<p>${e(project.description)}</p><div class="planning-options">${project.approaches.map(approach => `<button type="button" class="story-choice" data-project="${project.id}" data-approach="${approach.id}"><span>›</span><span><strong>${e(approach.title)}</strong><small>${e(approach.description)}</small></span></button>`).join('')}</div><p class="detail-footnote">这是接下来想试的做法，以后也可以换。</p>`);
+}
+function planPractice(skillId) {
+  const item = getGrowth(game).find(entry => entry.skillId === skillId);
+  if (!item || item.level < 1) return;
+  openDetail(item.skillId === 'record' ? '下次散步，想怎样试？' : '下次去社团，想怎样试？', `<p>同样的日常，可以把注意力放在不同的地方。</p><div class="planning-options">${item.practiceOptions.map(style => `<button type="button" class="story-choice" data-practice="${style.id}" data-skill="${item.skillId}" ${item.practice?.styleId === style.id ? 'disabled' : ''}><span>${item.practice?.styleId === style.id ? '✓' : '›'}</span><span><strong>${e(style.action)}</strong><small>${e(style.description)}</small></span></button>`).join('')}</div><p class="detail-footnote">以前练过的仍然保留，新的做法会从接下来的日常开始。</p>`);
+}
+function showOrigin(eventId) {
+  const event = game.events.find(item => item.id === eventId);
+  if (!event) return;
+  openDetail(event.title || '那天换了一种做法', `<p class="eyebrow">${e(dateLabel(event.day))}</p><p>${e(event.text)}</p>`);
 }
 function peoplePanel() {
   return `<section class="people-panel"><h2>渐渐认得的人</h2><div class="people-list">${game.peopleMet.map(id => `<button type="button" data-person="${id}" class="person-button">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small></span></button>`).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
@@ -62,12 +86,12 @@ function peoplePanel() {
 function storyPanel() {
   if (!game.pending) return '';
   const story = STORIES.find(item => item.id === game.pending.storyId);
-  const presentation = getStoryPresentation(story.id, game);
-  return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
+  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
+  return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${choice.practiceHint ? `<small class="practice-hint">${e(choice.practiceHint)}</small>` : ''}${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
 }
 function entryHTML(event) {
   const starred = game.favorites.includes(event.id);
-  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p></div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
+  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p></div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
 }
 function diary() {
   const entries = (logFilter === 'favorites' ? game.events.filter(event => game.favorites.includes(event.id)) : game.events).slice().reverse();
@@ -87,7 +111,7 @@ function render({newStory = false, latest = false} = {}) {
   const focused = document.activeElement;
   let focusKey;
   const focusAnchor = focused?.id === 'log-scroll' ? 'log-scroll' : focused?.matches?.('#focus-settings > summary') ? 'focus-summary' : focused?.matches?.('#growth-details > summary') ? 'growth-summary' : null;
-  if (main.contains(focused)) for (const key of ['action','focus','choice','speed','filter','star','person','project','resumeProject']) if (focused.dataset?.[key]) {focusKey = [key,focused.dataset[key]]; break;}
+  if (main.contains(focused)) for (const key of ['action','focus','choice','speed','filter','star','person','project','resumeProject','planProject','practiceSkill','origin']) if (focused.dataset?.[key]) {focusKey = [key,focused.dataset[key]]; break;}
   const growthDetails = document.querySelector('#growth-details');
   if (growthDetails) growthOpen = growthDetails.open;
   const details = document.querySelector('#focus-settings');
@@ -112,7 +136,7 @@ function render({newStory = false, latest = false} = {}) {
 }
 function update(next, {latest = false} = {}) {
   const oldLength = game.events.length;
-  const growthChanged = Object.keys(SKILLS).some(id => next.skills[id] > game.skills[id]);
+  const growthChanged = growthSignature(next) !== growthSignature(game);
   const prepared = next.completedProjects.length > game.completedProjects.length;
   const newStory = !game.pending && next.pending;
   const scroll = document.querySelector('#log-scroll');
@@ -124,7 +148,7 @@ function update(next, {latest = false} = {}) {
 }
 function advance(count) {
   const next = advanceDays(game,count);
-  const newAbility = Object.keys(SKILLS).some(id => next.skills[id] > game.skills[id]);
+  const newAbility = growthSignature(next) !== growthSignature(game);
   const projectDone = next.completedProjects.length > game.completedProjects.length;
   if (next.pending || next.phase === 'ended' || newAbility || projectDone) pause();
   update(next);
@@ -137,8 +161,8 @@ function openDetail(title, content) {
   detailDialog.showModal();
 }
 function showGrowth() {
-  const summary = getSummary(game);
-  openDetail('这阵子的你', `<div class="growth-person">${avatar('you')}<span>你 · 大一${game.phase === 'ended' ? '的秋天' : '新生'}</span></div><p>日常里慢慢练过的东西，会变成新的做法。</p><div class="growth-skills">${Object.entries(SKILLS).map(([id,skill]) => `<div><span>${e(skill.name)}</span><strong>${e(skill.stages[game.skills[id]])}</strong></div>`).join('')}</div><h3>课余的时间</h3><div class="habit-summary">${FOCUSES.filter(focus => game.focusDays[focus.id] > 0).map(focus => `<p><span>${e(focus.title)}</span><span>${game.focusDays[focus.id]} 天</span></p>`).join('') || '<p>刚刚开始，还没有固定的安排。</p>'}</div><p class="detail-footnote">${summary.peopleMet.length} 位认得的人 · ${game.favorites.length} 条自己选的收藏</p>`);
+  const growth = getGrowth(game);
+  openDetail('这阵子的你', `<div class="growth-person">${avatar('you')}<span>你 · 大一${game.phase === 'ended' ? '的秋天' : '新生'}</span></div>${growth.map(item => `<section class="growth-detail-track"><h3>${e(item.name)} · ${e(item.practice?.name || item.stage)}</h3><p>${e(learnedText(item))}</p>${item.practice?.sourceText ? `<p class="practice-cause">${e(item.practice.sourceText)}</p>` : ''}${item.practiceOptions.filter(style => style.days > 0).map(style => `<h4>${e(style.name)}</h4>${style.capabilities.filter(capability => capability.unlocked).map(capability => `<p class="detail-ability">✓ ${e(capability.title)}<small>${e(capability.description)}</small></p>`).join('') || '<p>还在实际尝试中。</p>'}`).join('')}</section>`).join('')}<p class="detail-footnote">这些做法来自真正经历过的日常，已经练过的不会因为换个方向就消失。</p>`);
 }
 function showPerson(id) {
   if (!game.peopleMet.includes(id)) return;
@@ -155,8 +179,12 @@ document.addEventListener('click', event => {
     if (button.dataset.choice) {pause(); logFilter = 'all'; unseen = 0; update(choose(game,button.dataset.choice,game.revision),{latest:true}); if(!game.pending) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
     if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
     if (button.dataset.person) {showPerson(button.dataset.person); return;}
-    if (button.dataset.project) {pause(); started = true; update(startProject(game,button.dataset.project,game.revision)); toast('接下来的日常里，慢慢准备这件事。'); return;}
-    if (button.dataset.resumeProject) {const project = PROJECTS.find(item => item.id === button.dataset.resumeProject); update(setFocus(game,project.focusId)); return;}
+    if (button.dataset.planProject) {planProject(button.dataset.planProject); return;}
+    if (button.dataset.project && button.dataset.approach) {pause(); started = true; const next = startProject(game,button.dataset.project,button.dataset.approach,game.revision); detailDialog.close(); update(next,{latest:true}); return;}
+    if (button.dataset.practiceSkill) {planPractice(button.dataset.practiceSkill); return;}
+    if (button.dataset.practice && button.dataset.skill) {const next = setPractice(game,button.dataset.skill,button.dataset.practice,game.revision); detailDialog.close(); update(next,{latest:true}); return;}
+    if (button.dataset.origin) {showOrigin(button.dataset.origin); return;}
+    if (button.dataset.resumeProject) {const project = getProjects(game).find(item => item.id === button.dataset.resumeProject); let next = setFocus(game,project.focusId); if(project.approachId) next = setPractice(next,project.requiresSkill.id,project.approachId,next.revision); update(next,{latest:true}); return;}
     if (button.dataset.filter) {logFilter = button.dataset.filter; render({latest:true}); return;}
     switch(button.dataset.action) {
       case 'play': started = true; running = !running; accumulated = 0; lastTick = performance.now(); persist(); render(); break;
@@ -167,6 +195,8 @@ document.addEventListener('click', event => {
       }
       case 'latest': logFilter = 'all'; unseen = 0; render({latest:true}); break;
       case 'growth': showGrowth(); break;
+      case 'cancel-project': openDetail('先放下这次准备？','<p>已经练过的本领仍然保留。以后想重新做这件事，要从头准备。</p><button type="button" class="secondary-button" data-action="confirm-cancel-project">先放下，试试别的</button>'); break;
+      case 'confirm-cancel-project': {const next = cancelProject(game,game.revision); detailDialog.close(); update(next); break;}
       case 'restart': pause(); render(); restartDialog.showModal(); break;
       case 'cancel-restart': restartDialog.close(); break;
       case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
