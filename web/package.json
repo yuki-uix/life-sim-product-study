@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dist",
-    "test": "node --test tests/calendar.test.mjs tests/growth.test.mjs tests/history.test.mjs tests/reaction.test.mjs tests/social.test.mjs tests/invitations.test.mjs",
+    "test": "node --test tests/calendar.test.mjs tests/growth.test.mjs tests/history.test.mjs tests/reaction.test.mjs tests/social.test.mjs tests/invitations.test.mjs tests/fridays.test.mjs",
     "test:legacy": "node --test tests/engine.test.mjs tests/story.test.mjs"
   }
 }
