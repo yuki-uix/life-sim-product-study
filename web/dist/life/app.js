@@ -29,12 +29,16 @@ function save(){
 }
 function notify(text){const n=document.querySelector('#notice');n.textContent=text;n.hidden=false;setTimeout(()=>{n.hidden=true;},4200);}
 const delay=()=>950/speed;
-const hold=()=>6500/speed;
+const hold=()=>{
+  const scene=getCurrentScene(state);
+  const length=Array.from(`${scene?.title||''}${scene?.text||''}${scene?.quote||''}`).length;
+  return Math.max(10000,Math.min(30000,length*180+2000));
+};
 const canRun=()=>state.status==='living'&&!state.pending&&!manualPaused&&!reading&&!dialog.open&&!document.hidden;
 function timeLabel(){
   if(state.status==='ended')return '这一生已经结束';
   if(state.pending)return '有一件事，需要你决定';
-  if(reading)return '读旧记录时，时光暂歇';
+  if(reading)return '展开查看时，时光暂歇';
   return manualPaused?'时间已暂停':'日子在向前';
 }
 function yearMap(){
@@ -42,7 +46,7 @@ function yearMap(){
   return `<div class="year-map" aria-label="已经走过的年份，每格一年">${Array.from({length:86},(_,age)=>`<i data-year="${age}" class="${age<=state.age?'lived':''} ${age===state.age?'now':''} ${marks.has(age)?'marked':''}" title="${age}岁 · ${2005+age}年"></i>`).join('')}</div><div class="map-labels"><span>2005 · 出生</span><span>每格一年</span><span>${2005+state.age} · ${state.age}岁</span></div>`;
 }
 function timeBar(){
-  return `<section class="life-time" aria-label="当前人生时间"><div class="age-heading"><div class="hero-portrait" aria-hidden="true">${personArt('you',state.age)}</div><div class="age"><b id="age-number">${state.age}</b><span>岁</span></div><div class="where"><strong id="year-number">${2005+state.age}年</strong><span>${esc(state.facts.city)} · 陈知夏</span></div><span id="time-status">${timeLabel()}</span></div>${yearMap()}<div class="time-controls"><button type="button" id="pause" class="quiet-button" data-action="pause" ${state.status==='ended'?'disabled':''}>${manualPaused?'▷ 继续':'Ⅱ 暂停'}</button><label class="speed">时光 <select aria-label="时间速度" id="speed" ${state.status==='ended'?'disabled':''}><option value="1" ${speed===1?'selected':''}>1×</option><option value="2" ${speed===2?'selected':''}>2×</option></select></label><button type="button" id="next" class="next-button" data-action="next" ${state.pending||state.status==='ended'?'disabled':''}>往后过一段 <span aria-hidden="true">→</span></button></div></section>`;
+  return `<section class="life-time" aria-label="当前人生时间"><div class="age-heading"><div class="hero-portrait" aria-hidden="true">${personArt('you',state.age)}</div><div class="age"><b id="age-number">${state.age}</b><span>岁</span></div><div class="where"><strong id="year-number">${2005+state.age}年</strong><span>${esc(state.facts.city)} · 陈知夏</span></div><span id="time-status">${timeLabel()}</span></div><div class="time-controls"><button type="button" id="pause" class="quiet-button" data-action="pause" ${state.status==='ended'?'disabled':''}>${manualPaused?'▷ 继续':'Ⅱ 暂停'}</button><label class="speed">时光 <select aria-label="时间速度" id="speed" ${state.status==='ended'?'disabled':''}><option value="1" ${speed===1?'selected':''}>1×</option><option value="2" ${speed===2?'selected':''}>2×</option></select></label><button type="button" id="next" class="next-button" data-action="next" ${state.pending||state.status==='ended'?'disabled':''}>往后过一段 <span aria-hidden="true">→</span></button></div><details class="life-calendar" data-reader><summary>走过的年份 <span>展开时间线</span></summary>${yearMap()}</details></section>`;
 }
 function peoplePanel(){
   const people=getPeople(state.facts);
@@ -80,7 +84,7 @@ function render(){
   else{
     game.className='has-life';
     if(state.status==='ended'&&!cardInitialized){chooseDefaults();cardInitialized=true;}
-    game.innerHTML=`${timeBar()}${state.status==='ended'?`${ending()}${archive()}`:`<div class="living-layout"><div>${currentScene()}${archive()}</div>${peoplePanel()}</div>`}`;
+    game.innerHTML=`${timeBar()}${state.status==='ended'?`${ending()}${archive()}`:`<div class="living-layout">${currentScene()}${peoplePanel()}${archive()}</div>`}`;
   }
   for(const d of game.querySelectorAll('details[data-reader]'))d.addEventListener('toggle',()=>{
     reading=Boolean(game.querySelector('details[data-reader][open]'));
@@ -107,7 +111,12 @@ function progress(years,fromClick=false){
   const changed=old.log.length!==state.log.length;
   if(changed||old.pending!==state.pending||state.status!==old.status)render();else updateTime();
   nextStepAt=Date.now()+(changed?hold():delay());
-  if(fromClick&&changed&&state.pending)document.querySelector('#scene-title')?.focus({preventScroll:true});
+  if(changed&&(fromClick||state.pending))revealScene();
+}
+function revealScene(){
+  const scene=game.querySelector('#current');
+  if(scene&&scene.getBoundingClientRect().top<12)scene.scrollIntoView({block:'start',behavior:'instant'});
+  scene?.querySelector('#scene-title')?.focus({preventScroll:true});
 }
 async function updateCard(){
   if(state.status!=='ended')return;
@@ -130,7 +139,7 @@ async function updateCard(){
 game.addEventListener('click',async e=>{
   const choice=e.target.closest('[data-choice]');
   if(choice&&choice.dataset.event===state.pending){
-    try{state=choose(state,choice.dataset.choice);save();render();nextStepAt=Date.now()+hold();document.querySelector('#scene-title')?.focus({preventScroll:true});}
+    try{state=choose(state,choice.dataset.choice);save();render();nextStepAt=Date.now()+hold();revealScene();}
     catch(err){console.error(err);notify('这段记录暂时没接上，请刷新回到刚才的决定。');}
     return;
   }

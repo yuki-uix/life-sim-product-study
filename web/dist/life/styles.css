@@ -10,3 +10,84 @@
 
 .card-layout{grid-template-areas:"fields preview" "actions preview";row-gap:0}.card-fields{grid-area:fields}.card-preview{grid-area:preview}.card-actions{grid-area:actions}
 @media(max-width:720px){.card-layout{gap:20px}.card-preview{order:0}.card-actions{width:100%}.card-actions .save-card{margin-top:0}}
+
+/* Keep the story in one reading column; small screens retain readable type. */
+:root{--muted:#b4c0b2;--green:#c0d3ad}
+body{font-size:17px}
+.site-header,#game{max-width:900px}
+.site-footer{max-width:844px;font-size:12px;color:#a6b6a3}
+.edition,.text-button{font-size:13px}
+.birth-prose{font-size:18px;color:var(--ink)}
+.birth-question{font-size:16px}
+.begin-button{font-size:17px;min-height:50px}
+.sample-note{font-size:12px;color:#a6b6a3}
+.living-layout{display:block;max-width:760px;margin:0 auto}
+.current-scene{min-height:0;padding-bottom:28px;scroll-margin-top:20px}
+.eyebrow,.scene-heading .eyebrow,.scene-heading .eyebrow>span{font-size:13px}
+.current-scene h1{font-size:30px;line-height:1.5;margin:14px 0 20px}
+.scene-text{font-size:19px;line-height:1.95;color:#e1e6d8}
+.current-scene blockquote span{font-size:14px}
+.current-scene blockquote p{font-size:17px;line-height:1.9}
+.decision-label{font-size:14px}
+.choice{padding:17px 19px;min-height:64px}
+.choice strong{font-size:18px;line-height:1.6}
+.choice small{font-size:15px;line-height:1.8;color:#bfceb4;margin-top:7px}
+.choices{gap:13px}
+.scene-foot{font-size:13px;color:#a6b6a3}
+.where>span,#time-status,.age>span{font-size:13px}
+.where strong{font-size:16px}
+.map-labels{font-size:11px;color:#a6b6a3}
+.quiet-button,.next-button{font-size:15px;min-height:44px}
+.speed,.speed select{font-size:13px}
+.speed select{min-height:36px;padding:4px 7px}
+.age-heading{margin-bottom:0}
+.time-controls{margin-top:9px;padding-bottom:5px;border-bottom:0}
+.life-calendar{border-bottom:1px solid var(--line);padding:8px 0 13px}
+.life-calendar>summary{font-size:12px;color:var(--muted);list-style:none;display:flex;justify-content:space-between;min-height:27px;align-items:center}
+.life-calendar>summary::-webkit-details-marker{display:none}
+.life-calendar>summary span{font-size:11px;color:var(--green)}
+.life-calendar .year-map{margin-top:13px}
+.people-panel{border-left:0;border-top:1px solid var(--line);padding:17px 0;margin-top:6px}
+.people-reader>summary{font-size:15px;padding-bottom:0;min-height:30px}
+.people-reader>summary span,.person-list h3>span{font-size:12px;color:var(--muted)}
+.person-list{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px}
+.person-list h3{font-size:15px}
+.person-list p{font-size:14px;color:#b5c4aa}
+.place-note{border:0;display:flex;gap:18px;align-items:baseline;margin-top:12px;padding-top:0}
+.place-note>span,.place-note p{font-size:13px;color:var(--muted)}
+.archive{margin-top:7px}
+.archive h2{font-size:16px}
+.archive-heading>span,.log-entry time,.log-entry summary>small{font-size:12px;color:#a7b99e}
+.log-entry>summary{font-size:15px;line-height:1.8;padding:14px 0;color:#c0cfb5}
+.log-body{font-size:16px;line-height:1.95;color:#d2ddc6}
+.older>summary,.older>summary>span{font-size:13px;color:#a7b99e}
+.closing-scene,.portrait-prose{font-size:18px;color:#d2ddc6}
+.life-dates,.life-facts summary,.life-facts dl,.life-facts ul{font-size:15px}
+.life-facts summary>span,.unfulfilled-label{font-size:13px}
+.editor-help,.memory-selector>summary,.caption-label,.memory-option{font-size:15px}
+.memory-selector>summary span,.memory-option span>b,.caption-label span,.caption-count,.card-status{font-size:12px}
+textarea{font-size:16px}
+.save-card,.replay-button{font-size:16px;min-height:48px}
+@media(max-width:720px){
+  body{font-size:16px}
+  .site-header{gap:10px}.edition,.text-button{font-size:11px}
+  .birth h1{font-size:29px}.birth-prose{font-size:17px}.birth-question{font-size:15px}
+  .sample-note{font-size:12px;max-width:320px}
+  .current-scene h1{font-size:27px}.scene-text{font-size:18px;line-height:1.9}
+  .scene-heading .eyebrow{font-size:13px}.scene-heading .eyebrow>span{font-size:12px}
+  .scene-art{width:80px}.current-scene blockquote p{font-size:16px}
+  .choice{padding:15px}.choice strong{font-size:17px}.choice small{font-size:14px}
+  .where strong{font-size:14px}.where>span,.age>span{font-size:12px}
+  #time-status{font-size:12px;max-width:92px}.map-labels{font-size:10px}
+  .time-controls{gap:15px}.quiet-button,.next-button{font-size:14px}
+  .speed,.speed select{font-size:12px}.next-button{gap:5px}
+  .people-reader>summary{font-size:15px}.person-list{display:block}
+  .person-list article{margin-top:18px}.person-list h3{font-size:15px}.person-list p{font-size:14px}
+  .place-note>span,.place-note p{font-size:12px}
+  .archive h2{font-size:15px}.archive-heading>span{font-size:11px}
+  .log-entry>summary{font-size:14px;gap:9px}.log-entry time,.log-entry summary>small{font-size:11px}
+  .log-body{font-size:16px;padding-left:0}.closing-scene,.portrait-prose{font-size:17px}
+  .life-facts summary,.life-facts dl{font-size:14px}.editor-help{font-size:14px}
+  .memory-selector>summary,.memory-option,.caption-label{font-size:14px}
+  .site-footer{font-size:11px}
+}
