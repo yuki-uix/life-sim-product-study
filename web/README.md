@@ -1,4 +1,6 @@
-# 当前试玩：大学慢慢来 · 今日安排
+# 历史在线原型 大学慢慢来 今日安排
+
+> 当前产品规划为 [中国完整一生 MVP](../docs/china-life-mvp.md)，[两条纸面试玩](../docs/china-life-paper-playthroughs.md) 已写完。下文记录的是尚未重做的旧应用，本轮没有改代码或部署。
 
 [在线体验连续八天](https://three-weekends-yuki.yuki-uix.chatgpt.site/fridays/)
 
@@ -10,7 +12,7 @@
 
 # 大学慢慢来 · 一个秋天
 
-[在线试玩](https://three-weekends-yuki.yuki-uix.chatgpt.site/)。v0.9 加入同伴的回访：平时有了真实往来或共同经历，他们会主动接旧话、邀请你一起过段课余。你也能主动找人，逐渐形成熟悉和默契。日常、共同活动与各人的习惯会影响之后的回应和分工。虚构中国南棠大学，日历独立推进，近期重心持续作用，普通记录自动出现，少量剧情才暂停等待决定。
+[历史秋季试玩](https://three-weekends-yuki.yuki-uix.chatgpt.site/autumn.html)。v0.9 加入同伴的回访：平时有了真实往来或共同经历，他们会主动接旧话、邀请你一起过段课余。你也能主动找人，逐渐形成熟悉和默契。日常、共同活动与各人的习惯会影响之后的回应和分工。虚构中国南棠大学，日历独立推进，近期重心持续作用，普通记录自动出现，少量剧情才暂停等待决定。
 
 这是节奏验证片段，只有入学后的三个月。完整大学四年、其他学制、更多国家与 sharing 后置。
 
@@ -21,7 +23,7 @@ cd web
 npm run dev
 ```
 
-打开 `http://127.0.0.1:4173/`。纯 HTML/CSS/JavaScript，无第三方运行依赖，`dist/` 是源码，无需构建。
+打开 `http://127.0.0.1:4173/autumn.html` 查看此秋季版本；首页与 `/fridays/` 为八天原型。纯 HTML/CSS/JavaScript，无第三方运行依赖，`dist/` 是源码，无需构建。
 
 ```sh
 npm test

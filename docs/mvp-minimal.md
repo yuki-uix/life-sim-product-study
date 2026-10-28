@@ -1,8 +1,10 @@
-# 当前 MVP：角色长出本领，本领带来事件
+# 八周角色养成原型历史
+
+> 历史记录：本页保留当时的提案与实现情况。当前规划已改为 [中国完整一生 MVP](china-life-mvp.md)，内容基准见 [两条纸面试玩](china-life-paper-playthroughs.md)。下文的旧原型范围、技能预算及 sharing 后置决定不再作为现行要求。
 
 状态：v0.2 已实现，待新一轮试玩。日期：2026-10-26。
 
-试玩：[城南八周](https://three-weekends-yuki.yuki-uix.chatgpt.site/)。同一站点从「三个周末」更新；实现见 [web/README](../web/README.md)。
+当时的部署地址（现已更新为其他原型）：[城南八周](https://three-weekends-yuki.yuki-uix.chatgpt.site/)。同一站点从「三个周末」更新；实现见 [web/README](../web/README.md)。
 
 ## 为什么更换核心循环
 
