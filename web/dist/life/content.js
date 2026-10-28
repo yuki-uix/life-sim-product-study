@@ -1,11 +1,14 @@
 /** Authored fictional lives. Effects describe facts; prose never invents an unplayed branch. */
+import { makeYoungLife, getClosingPlan, applyClosingChoice } from './living.js';
+
 export const PROFILE = { name: '陈知夏', gender: '女', birthYear: 2005, endAge: 85, country: '中国', birthplace: '澄江' };
 
 export const INITIAL_FACTS = {
   college: null, city: '澄江', cities: ['澄江'], visitedPlaces: [],
   metZhou: false, childhoodRecord: false, parentsAlive: true,
   closingPresence: false, closingRecording: null, streetRecordCount: 0, streetRecordOwner: null,
-  filmStatus: 'none', songMet: false, songStatus: 'unknown', songCity: null, cohabit: false,
+  filmStatus: 'none', filmEdition: 'full', filmCredit: 'solo', young: null,
+  songMet: false, songStatus: 'unknown', songCity: null, cohabit: false,
   xuMet: false, xuStatus: 'unknown', movedForXu: false,
   classMode: null, studentMet: false, northVisited: false, kitchenRenovated: false,
   homeChoice: null, seaDays: 0, soundWorkCompleted: false, soundWorkSubmitted: false,
@@ -21,6 +24,33 @@ const life = (id, age, present, more = {}) => ({ id, age, kind: 'life', present,
 const decision = (id, age, present, choices, when) => ({ id, age, kind: 'decision', present, choices, when });
 const choice = (id, label, detail, effect, result) => ({ id, label, detail, effect, result });
 const archiveName = f => f.streetRecordCount === 13 ? '十三家旧店' : '周舟录下的五家旧店';
+const filmName = f => f.filmCredit === 'joint' ? '和周舟共同署名的短片' : f.filmEdition === 'short' ? '九十秒精简版短片' : '个人完整版短片';
+const conditionalChoice = (value, available, reason) => ({ ...value, available, unavailableReason: available ? '' : reason });
+
+function awayClosingChoices(f) {
+  const plan = getClosingPlan(f);
+  return [
+    choice('return_home', '这次先回去，短片改投以后', '请长假坐慢车，把这一周留给父母。票款约1000元，不足时从之后的生活费先补；保留手上的版本，不参加这次征集。', f => applyClosingChoice(f, 'return_home'), f => scene('你在卷帘门旁边', `你坐慢车回去，陪父亲修完最后一台风扇，用手机录下拉卷帘门的声音。回临港时征集已截止，电脑里仍是出发前留下的版本。${f.young?.fareDeferred ? '约1000元票款还要从之后的生活费里补上。' : '慢车票也花掉了一部分备用金。'}`, { person: 'father', quote: '抽屉里这个录音笔，你还要不要？', memory: '29岁，回乡陪父母搬店，亲手录下旧铺最后关门；没有参加那次短片征集。' })),
+    choice('finish_film', '留下，把完整版亲手交出去', `按你现在的准备，还需${plan.fullDays}天，包括夜班补拍、声音核对与输出。独立完成并按时投稿，旧铺关门时赶不回去。`, f => applyClosingChoice(f, 'finish_film'), () => scene('邮件发出去以后', '你跟着夜班师傅拍完两个晚上，核过声音，在截止前发出了自己署名的完整版。母亲传来关门的视频，里面有人叫她把手机拿稳。再回澄江时，旧铺前已经围起挡板。', { memory: '29岁，独立完成并提交完整版短片；父母搬店时不在场，收到母亲拍的关门视频。' })),
+    conditionalChoice(choice('short_cut_home', '交精简版，再赶回去搬店', `剪辑${plan.shortDays}天，加上快车往返与搬店${plan.travelDays}天；动用约${plan.travelCost * 1000}元备用金。把片子缩成九十秒，舍掉原本想保留的夜班段落。`, f => applyClosingChoice(f, 'short_cut_home'), () => scene('把那一段留在计划里', '你用已有画面剪成九十秒，原计划跟拍夜班师傅的段落，这次不再补拍。早先拍下的零散夜景仍另存着。邮件发出后赶车回乡，关门前到了父亲身边。旧铺最后的声音，是你亲手按下录音键留下的。', { person: 'father', quote: '到了就先坐会儿，还没收完。', memory: '29岁，删减并提交九十秒短片后回乡，亲历父母搬店；原计划的夜班段落没有进入投稿版。' })), plan.canShort, plan.shortReason),
+    conditionalChoice(choice('co_edit_home', '和周舟分工，联名交片后回乡', `你还需${plan.coeditDays}天处理画面，快车往返与搬店${plan.travelDays}天，动用约${plan.travelCost * 1000}元备用金。周舟接声音部分；共同署名，明年还要留出两个完整空闲周末帮她的项目。`, f => applyClosingChoice(f, 'co_edit_home'), () => scene('片尾写上两个名字', '周舟按之前的合作约定接下声音部分，你把画面和文件交接清楚，再赶车回乡。投稿时写了两个人的名字。父母关门时你在场；周舟自己的口述史还没做完，你答应明年留出两个完整空闲周末替她整理一部分。', { person: 'zhouzhou', quote: '我只能接声音这一段。片尾写我们两个，明年留两个周末来帮我。', memory: '29岁，与周舟分工并共同署名提交短片，回乡亲历关门；答应下一年用两个完整空闲周末协助她的口述史项目。' })), plan.canCoedit, plan.coeditReason),
+  ];
+}
+
+function awayClosingPortrait(f) {
+  if (f.filmStatus === 'draft') return '29岁，你回到旧铺陪父母搬店，留下自己在场的关门声；手上的短片没有参加那次征集。';
+  if (f.filmCredit === 'joint') return `29岁，你和周舟分工、共同署名投稿，也回乡亲历了旧铺关门。${f.young?.followupDone ? '下一年，你按约替她整理了口述史素材。' : ''}`;
+  if (f.filmEdition === 'short') return '29岁，你舍去原计划的一段内容，提交九十秒精简版，再赶回旧铺陪父母搬店。';
+  return '29岁，你留下独立完成完整版，后来进入小型线上放映单；旧铺关门时，你只能看母亲发来的视频。';
+}
+
+function zhouDetail(f) {
+  if (f.seaDays) return `一起在海边住过${f.seaDays}天。`;
+  if (f.streetRecordCount) return '还记得十岁时的街声，也参与了旧街采录。';
+  if (f.filmCredit === 'joint') return f.young?.followupDone ? '一起署名完成过短片，你也按约帮她整理了口述史素材。' : '一起署名提交了短片；你还答应为她的口述史留出时间。';
+  if (f.young?.cooperation) return '一起做过剪辑，约好忙不过来时可以商量分工。';
+  return '十岁时，一起用旧录音笔录过声音。';
+}
 
 export const TIMELINE = [
   life('birth', 0, () => scene('维修铺后面的一张小床', '2005年，你出生在沿江小城澄江。父母经营一间家电维修铺。婴儿床放在柜台后面，傍晚收摊时，父亲总要再检查一次插线板。')),
@@ -37,20 +67,20 @@ export const TIMELINE = [
     ? scene('先学会自己去医院', '你学会剪视频，也学会和室友轮流打扫。第一次独自去医院，在挂号窗口前绕了两圈。宿舍有人半夜煮面，你跟着分了一碗。')
     : scene('课本封底的地名', '你和周舟在公交上看到一张海边照片，说毕业以后去看看。那个暑假，一个实习，一个打工。地名写在课本封底，谁也没订票。')),
   life('local_job', 22, () => scene('自己住以后', '你在本地做展馆音频，搬出家住。梅雨季衣服总晾不干，父亲来修过两次电饭锅。晚上有时去铺子吃饭，有时只想在家煮面。'), { when: local }),
-  life('away_job', 23, () => scene('临港，一间晒不到太阳的房', '毕业后，你到临港做展览视频。有时工作很有趣，有时反复改同一行字幕。你存了一条北方旅行路线；周舟的语音，常攒到周末才听。'), { when: away, effect: f => { move(f, '临港'); f.filmStatus = 'draft'; } }),
-  life('ordinary_twenty_six', 26, f => away(f)
-    ? scene('片尾还没看完', '周六睡醒已经快中午。你把洗衣机打开，电脑里的片尾还没播完。楼下新开了一家早餐店，等你下去时，包子已经卖完。')
-    : scene('换了一个窗口', '常去的食堂换了窗口。你和周舟排到跟前，才发现想吃的那道卖完了。吃完回去上班时，你们又约了一次没定日期的海边旅行。')),
+  life('away_job', 23, () => scene('临港，一间晒不到太阳的房', '毕业后，你到临港做展览视频。有时工作很有趣，有时反复改同一行字幕。自己拍过的几段素材，还没剪成想要的样子。空下来的晚上，你会开电脑，也会先躺一会儿；周舟的语音常攒到周末才听。'), { when: away, effect: f => { move(f, '临港'); f.filmStatus = 'draft'; f.young = makeYoungLife(); } }),
+  life('ordinary_twenty_six', 26, () => scene('换了一个窗口', '常去的食堂换了窗口。你和周舟排到跟前，才发现想吃的那道卖完了。吃完回去上班时，你们又约了一次没定日期的海边旅行。'), { when: local }),
+  life('moving_notice', 28, () => scene('父亲发来一张门口的照片', '旧街列进了改造计划。父母开始找新的铺面，最后营业日还没定。父亲说柜台里有些旧东西，等你回来再收。周舟接了文化馆的口述史整理，回消息也比以前慢了。你自己的片子还在约最后一段夜班补拍，要等师傅排出空闲。', { person: 'father', quote: '不急着现在回来，等日子定了再说。' }), { when: away }),
 
-  decision('away_closing29', 29, () => scene('老街月底搬走', '老街要改造，父母得在月底前搬店。你第一次以个人名义准备投稿短片，距离截止还有一周，最后一轮剪辑尚未完成。父亲说搬家公司已经约好，问你要不要回来收东西。'), () => [
-    choice('return_home', '回去，陪父母搬店', '能过完旧铺最后几天。短片很可能赶不上这次征集。', f => { f.closingPresence = true; f.closingRecording = 'own'; f.filmStatus = 'draft'; }, () => scene('你在卷帘门旁边', '你坐在父亲旁边，看他修完最后一台风扇，用手机录下了拉卷帘门的声音。回临港时征集已截止，那部短片停在草稿里。', { person: 'father', quote: '抽屉里这个录音笔，你还要不要？', memory: '29岁，回乡陪父母搬店，亲手录下旧铺最后关门；错过个人短片投稿。' })),
-    choice('finish_film', '留下，把短片交出去', '亲手完成并按时投稿。旧铺关门时，你赶不回去。', f => { f.closingPresence = false; f.closingRecording = 'mother-video'; f.filmStatus = 'submitted'; }, () => scene('邮件发出去以后', '你在截止前发出短片。母亲传来关门的视频，里面有人叫她把手机拿稳。再回澄江时，旧铺前已经围起挡板。', { memory: '29岁，按时完成并提交个人短片；父母搬店时不在场，收到母亲拍的关门视频。' })),
-  ], away),
+  decision('away_closing29', 29, f => scene('老街月底搬走', `父母定好月底搬店，短片征集也在这周截止。片中的夜班师傅终于约出两个晚上；保留他的段落，还要做声音核对与输出。加上尚待整理的部分，你独立收尾需要${getClosingPlan(f).fullDays}天。快车往返和陪搬店要留四天。父亲问你，要不要回来收柜台里的东西。`), awayClosingChoices, away),
   decision('local_closing29', 29, () => scene('同一个营业下午', '老街要改造。父母约了周日下午搬店，文化馆也想在最后营业日留下十三家店的声音。周舟负责访问，你负责录音，几位店主只有那天下午能聚齐。'), () => [
     choice('with_parents', '先陪父母收店', '周舟一个人继续采录，能留下多少算多少。', f => { f.closingPresence = true; f.closingRecording = 'own'; f.streetRecordCount = 5; f.streetRecordOwner = 'zhouzhou'; }, () => scene('把灯泡递上去', '你陪父母收好工具，录下最后一次关门。周舟后来传来五家店的声音，说一个人问着问着，总忘了先按录音。新店的灯，你们晚上一起装好。', { person: 'zhouzhou', quote: '先给你这五段，别的确实没赶上。', memory: '29岁，陪父母收店并亲手录下关门；收到周舟独自采录的五家旧店声音。' })),
     choice('record_street', '把十三家的采访录完整', '先把答应的采录做完。父母那边晚上再去，关门时你不在场。', f => { f.closingPresence = false; f.closingRecording = 'mother-video'; f.streetRecordCount = 13; f.streetRecordOwner = 'joint'; }, () => scene('十三段录音和一段视频', '你录下十三家店。母亲发来关门的视频，你有影像，却没站在那扇门旁。晚上去新店帮忙，父亲只指了指箱子，让你递灯泡。', { person: 'father', quote: '灯泡递我一下。', memory: '29岁，和周舟录下十三家旧店；父母关门时不在场，收到母亲拍的视频。' })),
   ], local),
-  life('film_reply', 31, () => scene('一封带链接的回信', '小型线上放映单里出现了你的三分钟短片。没有奖项，观看的人也不多。一位同学发来两个镜头的反馈，你回放了一遍，记下他说的地方。', { memory: '31岁，收到线上放映通知，29岁提交的个人短片进入放映单。' }), { when: f => away(f) && f.filmStatus === 'submitted', effect: f => { f.filmStatus = 'screened'; } }),
+  life('film_reply', 31, f => scene('一封带链接的回信', f.filmCredit === 'joint'
+    ? '放映通知寄到了你和周舟两人的邮箱。小型线上节目单里，片尾按约写着两个名字。没有奖项，观看的人也不多。周舟把其中一条声音反馈转给你，说下次可以换个录法。'
+    : f.filmEdition === 'short'
+      ? '小型线上放映单里出现了那段九十秒精简版。没有奖项，观看的人也不多。你回看了一次，想起没有补拍的夜班段落；早先拍下的零散夜景，仍留在另一个文件夹里。'
+      : '小型线上放映单里出现了你的三分钟短片。没有奖项，观看的人也不多。一位同学发来两个镜头的反馈，你回放了一遍，记下他说的地方。', { memory: `31岁，收到线上放映通知，${f.filmCredit === 'joint' ? '29岁与周舟共同署名提交的短片' : `29岁提交的${filmName(f)}`}进入放映单。` }), { when: f => away(f) && f.filmStatus === 'submitted', effect: f => { f.filmStatus = 'screened'; } }),
   life('meet_song', 33, () => scene('周舟来临港出差', '周舟拉你参加一次周末骑行。你认识宋闻，后来开始约会。有一次两个人骑错路，最后在便利店吃了晚饭；也有几次约好又临时取消。', { memory: '33岁，经周舟的一次来访认识宋闻，后来开始交往。' }), { when: away, effect: f => { f.songMet = true; f.songStatus = 'dating'; f.songCity = '临港'; } }),
   life('meet_xu', 35, () => scene('有人录家里的锅', '周舟在文化馆工作，偶尔请你带声音小课。第一次回放，大家总嫌自己的声音奇怪。这一年，你和大学时就认识的许阳开始交往。', { memory: '35岁，在澄江带起声音小课，与大学同学许阳开始交往。' }), { when: local, effect: f => { f.xuMet = true; f.xuStatus = 'dating'; f.classMode = 'occasional'; } }),
   life('thirty_seven', 37, f => away(f)
@@ -83,7 +113,7 @@ export const TIMELINE = [
     choice('expand', '多带几个社区，每周去两天', '认识更多学员。自己的录音和空闲时间会继续往后排。', f => { f.classMode = 'expanded'; f.studentMet = true; }, () => scene('教室的地址多了几个', '你的包里多了一张排课表。小尹帮忙检查设备，有的学员上几次就走，也有人一直跟着。回到家，有时连电脑都不想再打开。', { memory: '55岁，把声音课扩到几个社区，每周两天；小尹开始帮忙检查设备。' })),
     choice('small_group', '收成每月一次的小组', '留出自己的时间。想系统学习的人可能去别处。', f => { f.classMode = 'monthly'; f.studentMet = true; }, () => scene('没带录音也来坐坐', '几个人不再来了，小尹留下，周舟也偶尔参加。有一晚没人带录音，四个人各带了一样晚饭。吃完才想起来，原本要讲剪辑。', { memory: '55岁，把课程收为每月小组，小尹留下；有时大家只带晚饭来坐坐。' })),
   ], local),
-  life('parents_and_backup', 61, f => scene('最后一箱旧零件', `父母已经先后离世。你和周舟收拾最后一箱旧零件，换电脑时又备份了童年的街声。${away(f) ? f.filmStatus === 'draft' ? '那部没投出去的短片也还在，你没有重新剪完。' : '你又打开当年投稿的片子，觉得几处剪得太急。' : '机器已经坏了，文件还在。你有时认得声音，却一下想不起店名。'}`, { memory: '61岁，收拾父母留下的旧零件，再次备份童年街声。' }), { effect: f => { f.parentsAlive = false; } }),
+  life('parents_and_backup', 61, f => scene('最后一箱旧零件', `父母已经先后离世。你和周舟收拾最后一箱旧零件，换电脑时又备份了童年的街声。${away(f) ? f.filmStatus === 'draft' ? '没赶上那次征集的短片也还在，保存着你后来留下的版本。' : f.filmCredit === 'joint' ? '当年那部片子的片尾仍有两个人的名字，周舟一眼听出了自己改过的那段声音。' : f.filmEdition === 'short' ? '那段九十秒的投稿版和另存的零散夜景放在相邻文件夹里，你没有把它们合成同一个版本。' : '你又打开当年投稿的片子，觉得几处剪得太急。' : '机器已经坏了，文件还在。你有时认得声音，却一下想不起店名。'}`, { memory: '61岁，收拾父母留下的旧零件，再次备份童年街声。' }), { effect: f => { f.parentsAlive = false; } }),
   life('sixty_three', 63, f => scene('听着烧饭', `${archiveName(f)}的录音仍有几段没剪好。你有时听着烧饭，有时几个月不打开。周舟问还认不认得那家小吃店，你得听到后半段才想起来。`), { when: local }),
 
   decision('away_home68', 68, f => scene('要不要回澄江住一阵', '周舟说河边有套房子空着。你有点想回去，但宋闻还喜欢临港的生活。', { person: 'songwen', quote: f.cohabit ? '我不想一下子都退掉。你要不先去住一阵？' : '你先去试试？我这里还想再住几年。' }), f => [
@@ -115,7 +145,7 @@ export function getPeople(f) {
     { id: 'father', name: '父亲', relation: f.parentsAlive ? '家人' : '已离世', detail: f.parentsAlive ? '修理铺里的家人。' : '留下了一箱旧零件，以及记忆里的风扇声。' },
     { id: 'mother', name: '母亲', relation: f.parentsAlive ? '家人' : '已离世', detail: f.parentsAlive ? '一起经营维修铺。' : '一起经营过那间旧铺。' },
   ];
-  if (f.metZhou) people.push({ id: 'zhouzhou', name: '周舟', relation: '童年好友', detail: f.seaDays ? `一起在海边住过${f.seaDays}天。` : f.streetRecordCount ? '还记得十岁时的街声，也参与了旧街采录。' : '十岁时，一起用旧录音笔录过声音。' });
+  if (f.metZhou) people.push({ id: 'zhouzhou', name: '周舟', relation: '童年好友', detail: zhouDetail(f) });
   if (f.songMet) people.push({ id: 'songwen', name: '宋闻', relation: f.cohabit ? f.songCity === f.city ? '共同生活的伴侣' : '伴侣，暂时分开住' : '各住各的伴侣', detail: f.songCity === f.city ? f.cohabit ? `现在与你一起住在${f.city}。` : `也住在${f.songCity}，见面仍会先约时间。` : `宋闻住在${f.songCity}，你住在${f.city}，各自决定自己的住处。` });
   if (f.xuMet) people.push({ id: 'xuyang', name: '许阳', relation: f.xuStatus === 'parted' ? '曾经的伴侣' : f.xuStatus === 'distance' ? '异地的伴侣' : '伴侣', detail: ({ dating: '35岁开始交往。', distance: '许阳去了岚城，你先留在澄江。', trial: '正在岚城一起试住。', together: '现在一起在岚城生活。', parted: '42岁，在两年异地后分开。' })[f.xuStatus] || '大学时就认识的人。' });
   if (f.studentMet) people.push({ id: 'xiaoyin', name: '小尹', relation: '学员，后来也成了朋友', detail: f.archiveHanded ? '继续保存旧录音，仍与你有来往。' : f.classMode === 'monthly' ? '留在每月的小组里。' : '在课程里认识，也会帮忙检查设备。' });
@@ -130,10 +160,10 @@ export function getPortrait(f) {
   const paragraphs = [];
   const unfulfilled = [];
   if (isAway) {
-    paragraphs.push(`18岁，你去岚城读书，后来到临港工作。${f.closingPresence ? '29岁，你回到旧铺陪父母搬店，留下一段自己在场的关门声；那次短片投稿没有赶上。' : '29岁，你留下完成短片，后来进入小型线上放映单；旧铺关门时，你只能看母亲发来的视频。'}`);
+    paragraphs.push(`18岁，你去岚城读书，后来到临港工作。${awayClosingPortrait(f)}`);
     paragraphs.push(`${f.cohabit ? '40岁开始，你与宋闻建立共同生活。' : '你和宋闻一直保留各自住处，见面要约时间。'}${f.homeChoice === 'try_home' ? f.cohabit ? '68岁先回澄江试住，几个冬天以后，宋闻才把书搬过来。' : '68岁，你先回澄江，宋闻仍留在临港，来往没有变成同住。' : '晚年，你选择留在临港，熟悉的住处没有再退掉。'}`);
     paragraphs.push(f.northVisited ? '北方那条存了多年的路线，你确实走过。那张车票后来又被翻出来看过几次。' : '厨房翻新过，日子方便了。北方的路线仍留在地图册里，这段人生后来没有安排成行。');
-    if (f.filmStatus === 'draft') unfulfilled.push('29岁那部个人短片停在草稿，没有参加那次征集。');
+    if (f.filmStatus === 'draft') unfulfilled.push('手上的短片没有参加29岁那次征集。');
     if (!f.northVisited) unfulfilled.push('收藏多年的北方旅行没有成行。');
   } else {
     paragraphs.push(`18岁，你留在澄江读书，后来做音频工作。${f.closingPresence ? '29岁，你陪父母收店，周舟另带回五家店的录音；你留下了自己在场的关门声。' : '29岁，你和周舟完整采录十三家店。父母关门时不在场，晚上又去新店帮忙。'}`);
@@ -147,7 +177,7 @@ export function getPortrait(f) {
     facts: [
       { label: '生活过的城市', value: f.cities.join('、') },
       { label: '亲历的旧铺关门', value: f.closingPresence ? '你当时在场，亲手录下声音' : '你不在场，收到母亲拍的视频' },
-      ...(isAway ? [{ label: '个人短片', value: f.filmStatus === 'screened' ? '完成投稿，后来进入线上放映单' : '草稿保留，未参加那次征集' }]
+      ...(isAway ? [{ label: '短片', value: f.filmStatus === 'screened' ? `${filmName(f)}，完成投稿后进入线上放映单` : '已有版本保留，没有参加29岁那次征集' }]
         : [{ label: '旧街素材', value: f.streetRecordOwner === 'zhouzhou' ? '周舟独自采录的五家旧店，你收到并使用' : '和周舟共同采录的十三家旧店' }, { label: '声音作品', value: f.soundWorkCompleted ? '已完成并提交；没有展出确认' : '原始素材保留，未完成成片' }]),
       { label: '出发过的旅行', value: f.visitedPlaces.length ? f.visitedPlaces.map(p => p === '海边' ? `海边 ${f.seaDays}天` : p).join('、') : '北方的路线仍在收藏里' },
     ],

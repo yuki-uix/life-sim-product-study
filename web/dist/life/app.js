@@ -1,16 +1,17 @@
-import { createGame, begin, advance, choose, getChoices, getCurrentScene, getMemories, getNextAge, validateSave } from './engine.js?v=1';
+import { createGame, begin, advance, choose, getDecisionOptions, getCurrentScene, getMemories, getNextAge, validateSave, startYoungSample, setFocus, arrange, getLifeView } from './engine.js?v=3';
 import { PROFILE, getPeople, getPortrait } from './content.js';
 import { lifeScene, personArt } from './art.js';
 import { drawCard, saveCard } from './card.js';
 
-const KEY='china-life.save.v1';
+const KEY='china-life.save.v2';
 const game=document.querySelector('#game'), dialog=document.querySelector('#restart-dialog');
 const saveStatus=document.querySelector('#save-status');
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names={you:'陈知夏',father:'父亲',mother:'母亲',zhouzhou:'周舟',songwen:'宋闻',xuyang:'许阳',xiaoyin:'小尹'};
 let state=createGame(),manualPaused=false,reading=false,speed=1,nextStepAt=0,selected=[],caption='',cardReady=false;
-let drawing=0,cardInitialized=false;
+let drawing=0,cardInitialized=false,hasOldSave=false;
 try{
+  hasOldSave=Boolean(localStorage.getItem('china-life.save.v1'));
   const raw=JSON.parse(localStorage.getItem(KEY)||'null');
   const restored=raw&&validateSave(raw.state);
   if(restored){
@@ -34,10 +35,11 @@ const hold=()=>{
   const length=Array.from(`${scene?.title||''}${scene?.text||''}${scene?.quote||''}`).length;
   return Math.max(10000,Math.min(30000,length*180+2000));
 };
-const canRun=()=>state.status==='living'&&!state.pending&&!manualPaused&&!reading&&!dialog.open&&!document.hidden;
+const canRun=()=>state.status==='living'&&!state.pending&&!getLifeView(state).needsPlan&&!manualPaused&&!reading&&!dialog.open&&!document.hidden;
 function timeLabel(){
   if(state.status==='ended')return '这一生已经结束';
   if(state.pending)return '有一件事，需要你决定';
+  if(getLifeView(state).needsPlan)return '先选最近的生活安排';
   if(reading)return '展开查看时，时光暂歇';
   return manualPaused?'时间已暂停':'日子在向前';
 }
@@ -53,13 +55,26 @@ function peoplePanel(){
   return `<aside class="people-panel"><details class="people-reader" data-reader><summary>生活里的人 <span>展开看看</span></summary><div class="person-list">${people.map(p=>`<article>${personArt(p.id,state.age)}<div><h3>${esc(p.name)}<span>${esc(p.relation)}</span></h3><p>${esc(p.detail)}</p></div></article>`).join('')}</div></details><div class="place-note"><span>住过的地方</span><p>${state.facts.cities.map(esc).join(' · ')}</p></div></aside>`;
 }
 function intro(){
-  return `<section class="birth" id="current"><p class="eyebrow">2005年 · 中国 · 澄江</p><h1>这一生，你是陈知夏。</h1><div class="birth-art">${lifeScene(0)}</div><p class="birth-prose">父母经营一间家电维修铺。<br>柜台后面，放着你的婴儿床。</p><p class="birth-question">这个人，后来会过上怎样的生活？</p><button class="primary-button begin-button" type="button" data-action="begin">开始这一生 <span aria-hidden="true">→</span></button><p class="sample-note">本次为固定人物的完整人生试玩，未来经历均为虚构。</p></section>`;
+  return `<section class="birth" id="current"><p class="eyebrow">中国 · 澄江 · 2005年出生</p><h1>这一生，你是陈知夏。</h1><div class="birth-art">${lifeScene(0)}</div><p class="birth-prose">父母经营一间家电维修铺。<br>你有一部想做的短片，也有想见的人。</p><p class="birth-question">手上想做的片子，身边想见的人。<br>这几年，你想怎样安排？</p><button class="primary-button begin-button" type="button" data-action="young-sample">从23岁，试试这几年的生活 <span aria-hidden="true">→</span></button><button class="birth-secondary" type="button" data-action="begin">也可以从出生开始，过完整一生</button><p class="sample-note">23岁入口沿用外省求学的固定前情，之后仍可继续到晚年。<br>人物与经历均为虚构。</p>${hasOldSave?'<a class="legacy-link" href="../life-v1/">继续上一版已保存的人生 ↗</a>':''}</section>`;
+}
+function lifeOverview(){
+  const view=getLifeView(state);
+  if(!view.active)return typeof view.summary==='string'&&view.summary&&state.status==='living'&&state.age===31?`<section class="phase-summary"><p class="eyebrow">这几年的安排，留下了什么</p><p>${esc(view.summary)}</p></section>`:'';
+  return `<section class="life-overview" aria-labelledby="nearby-title"><div class="nearby-heading"><h2 id="nearby-title">眼下的生活</h2>${view.needsPlan?'<a class="plan-jump" href="#life-plan">先安排今年 ↓</a>':`<span>${esc(view.yearLabel||`${state.age}岁`)}</span>`}</div>${view.headline?`<p class="nearby-headline">${esc(view.headline)}</p>`:''}<dl class="condition-grid">${(view.items||[]).map(item=>`<div><dt>${esc(item.label)}</dt><dd>${esc(item.value)}</dd></div>`).join('')}</dl>${view.commitmentText?`<p class="ongoing-commitment">${esc(view.commitmentText)}</p>`:''}${view.notice?`<p class="world-notice">${esc(view.notice)}</p>`:''}<details class="condition-details" data-reader><summary>看看这些近况的细节</summary>${(view.items||[]).filter(item=>item.detail).map(item=>`<p><strong>${esc(item.label)}</strong>${esc(item.detail)}</p>`).join('')}<p>空闲周末只算能专心安排一件事的整段时间，平时休息不从这里扣。备用钱不含已经留给日常固定开销的部分。</p></details></section>`;
+}
+function lifePlanner(){
+  const view=getLifeView(state);if(!view.active)return '';
+  if(state.pending)return `<p class="planner-wait">最近的安排先停在这里。眼前这件事，需要你拿主意。</p>`;
+  const chosen=(view.focusOptions||[]).find(option=>option.selected||option.id===view.focus);
+  const hasAppointment=(view.arrangements||[]).some(option=>option.selected);
+  const labels={make:'给作品留时间',connect:'多些来往',settle:'先安顿生活'};
+  return `<section class="life-planner ${view.needsPlan?'needs-plan':''}" id="life-plan" aria-labelledby="plan-title"><div class="nearby-heading"><h2 id="plan-title">这几年，更想怎样过？</h2><span>可以保持，也可以调整</span></div>${view.needsPlan?'<p class="plan-help">先选一个最近的过法。日子会接着往前，你随时可以改。</p>':''}<div class="focus-options" role="group" aria-label="最近的生活重心">${(view.focusOptions||[]).map(option=>`<button type="button" data-focus="${esc(option.id)}" aria-pressed="${Boolean(option.selected||option.id===view.focus)}">${esc(labels[option.id]||option.label)}</button>`).join('')}</div><p class="focus-detail">${esc(chosen?.detail||'投入会随日子慢慢发生，选中不会立刻完成作品或改变关系。')}</p><details class="arrangement-menu" data-reader><summary><span>今年想主动安排一件事？</span><span>${hasAppointment?'查看安排':'展开看看 ＋'}</span></summary>${hasAppointment?`<p class="planned-detail">${esc(view.plannedText)}</p>`:''}<div class="arrangement-options">${(view.arrangements||[]).map(option=>`<button type="button" class="arrangement ${option.selected?'selected':''}" data-arrange="${esc(option.id)}" ${option.available&&!option.selected?'':'disabled'}><strong>${esc(option.label)}</strong><span>${esc(option.detail)}</span><small>${esc(option.cost||'')}${option.reason?`${option.cost?' · ':''}${esc(option.reason)}`:''}</small></button>`).join('')}</div><p class="arrangement-help">安排会占用今年的时间。日子经过以后，才会知道这一年实际做了什么。</p></details>${hasAppointment?`<p class="planned-line">${esc(view.plannedText)}</p>`:''}<div class="planner-controls"><button type="button" data-action="pause" class="quiet-button" ${view.needsPlan?'disabled':''}>${manualPaused?'▷ 继续':'Ⅱ 暂停'}</button><button type="button" data-action="next" class="next-button" ${view.needsPlan?'disabled':''}>过完今年 <span aria-hidden="true">→</span></button></div></section>`;
 }
 function currentScene(){
   const scene=getCurrentScene(state);
   if(!scene)return '';
-  const choices=getChoices(state);
-  return `<section class="current-scene ${state.pending?'needs-choice':''}" id="current" aria-labelledby="scene-title"><div class="scene-heading"><p class="eyebrow">${scene.age}岁 · ${2005+scene.age}年 <span>${state.pending?'此刻的决定':scene.kind==='choice'?'你选择以后':'那一年'}</span></p><div class="scene-art">${lifeScene(scene.age,state.facts.city)}</div></div><h1 id="scene-title" tabindex="-1">${esc(scene.title)}</h1><p class="scene-text">${esc(scene.text)}</p>${scene.quote?`<blockquote>${personArt(scene.person,state.age)}<div><span>${esc(names[scene.person]||'')}</span><p>「${esc(scene.quote)}」</p></div></blockquote>`:''}${choices.length?`<div class="decision-label">你会怎样决定？</div><div class="choices">${choices.map(c=>`<button type="button" class="choice" data-choice="${esc(c.id)}" data-event="${esc(state.pending)}"><span><strong>${esc(c.label)}</strong><small>${esc(c.detail)}</small></span><b aria-hidden="true">→</b></button>`).join('')}</div>`:`<p class="scene-foot">${scene.kind==='choice'?'日子会接着往前。':'普通的日子，也在这一生里。'}</p>`}</section>`;
+  const choices=getDecisionOptions(state);
+  return `<section class="current-scene ${state.pending?'needs-choice':''}" id="current" aria-labelledby="scene-title"><div class="scene-heading"><p class="eyebrow">${scene.age}岁 · ${2005+scene.age}年 <span>${state.pending?'此刻的决定':scene.kind==='choice'?'你选择以后':'那一年'}</span></p><div class="scene-art">${lifeScene(scene.age,state.facts.city)}</div></div><h1 id="scene-title" tabindex="-1">${esc(scene.title)}</h1><p class="scene-text">${esc(scene.text)}</p>${scene.quote?`<blockquote>${personArt(scene.person,state.age)}<div><span>${esc(names[scene.person]||'')}</span><p>「${esc(scene.quote)}」</p></div></blockquote>`:''}${getLifeView(state).active?lifeOverview():''}${choices.length?`<div class="decision-label">你会怎样决定？</div><div class="choices">${choices.map(c=>`<button type="button" class="choice" data-choice="${esc(c.id)}" data-event="${esc(state.pending)}" ${c.available===false?'disabled':''}><span><strong>${esc(c.label)}</strong><small>${esc(c.detail)}</small>${c.available===false&&c.reason?`<em class="unavailable-reason">眼下排不开：${esc(c.reason)}</em>`:''}</span><b aria-hidden="true">${c.available===false?'—':'→'}</b></button>`).join('')}</div>`:getLifeView(state).active?'':`<p class="scene-foot">${scene.kind==='choice'?'日子会接着往前。':'普通的日子，也在这一生里。'}</p>`}</section>`;
 }
 function archive(){
   const current=getCurrentScene(state)?.id;
@@ -84,7 +99,7 @@ function render(){
   else{
     game.className='has-life';
     if(state.status==='ended'&&!cardInitialized){chooseDefaults();cardInitialized=true;}
-    game.innerHTML=`${timeBar()}${state.status==='ended'?`${ending()}${archive()}`:`<div class="living-layout">${currentScene()}${peoplePanel()}${archive()}</div>`}`;
+    game.innerHTML=`${timeBar()}${state.status==='ended'?`${ending()}${archive()}`:`<div class="living-layout">${getLifeView(state).active?'':lifeOverview()}${currentScene()}${lifePlanner()}${peoplePanel()}${archive()}</div>`}`;
   }
   for(const d of game.querySelectorAll('details[data-reader]'))d.addEventListener('toggle',()=>{
     reading=Boolean(game.querySelector('details[data-reader][open]'));
@@ -95,12 +110,12 @@ function render(){
 }
 function updateTime(){
   const age=game.querySelector('#age-number');if(!age)return;
+  const view=getLifeView(state),blocked=Boolean(state.pending||state.status==='ended'||view.needsPlan);
   game.querySelector('.hero-portrait').innerHTML=personArt('you',state.age);
   age.textContent=state.age;game.querySelector('#year-number').textContent=`${2005+state.age}年`;
   game.querySelector('#time-status').textContent=timeLabel();
-  game.querySelector('#pause').textContent=state.status==='ended'?'已经结束':state.pending?'等你决定':manualPaused?'▷ 继续':'Ⅱ 暂停';
-  game.querySelector('#pause').disabled=Boolean(state.pending||state.status==='ended');
-  game.querySelector('#next').disabled=Boolean(state.pending||state.status==='ended');
+  game.querySelectorAll('[data-action="pause"]').forEach(button=>{button.textContent=state.status==='ended'?'已经结束':state.pending?'等你决定':view.needsPlan?'先选生活安排':manualPaused?'▷ 继续':'Ⅱ 暂停';button.disabled=blocked;});
+  game.querySelectorAll('[data-action="next"]').forEach(button=>{button.disabled=blocked;button.innerHTML=`${view.active?'过完今年':'往后过一段'} <span aria-hidden="true">→</span>`;});
   game.querySelector('.map-labels span:last-child').textContent=`${2005+state.age} · ${state.age}岁`;
   const marks=new Set(state.choices.map(c=>c.age));
   game.querySelectorAll('[data-year]').forEach(cell=>{const n=Number(cell.dataset.year);cell.className=`${n<=state.age?'lived':''} ${n===state.age?'now':''} ${marks.has(n)?'marked':''}`;});
@@ -111,11 +126,12 @@ function progress(years,fromClick=false){
   const changed=old.log.length!==state.log.length;
   if(changed||old.pending!==state.pending||state.status!==old.status)render();else updateTime();
   nextStepAt=Date.now()+(changed?hold():delay());
-  if(changed&&(fromClick||state.pending))revealScene();
+  if(changed&&(fromClick||state.pending||getLifeView(old).active||getLifeView(state).active))revealScene();
 }
 function revealScene(){
   const scene=game.querySelector('#current');
-  if(scene&&scene.getBoundingClientRect().top<12)scene.scrollIntoView({block:'start',behavior:'instant'});
+  const start=game.querySelector('.phase-summary')||scene;
+  if(start&&start.getBoundingClientRect().top<12)start.scrollIntoView({block:'start',behavior:'instant'});
   scene?.querySelector('#scene-title')?.focus({preventScroll:true});
 }
 async function updateCard(){
@@ -137,6 +153,27 @@ async function updateCard(){
 }
 
 game.addEventListener('click',async e=>{
+  const focus=e.target.closest('[data-focus]');
+  if(focus){
+    try{
+      const wasFirst=getLifeView(state).needsPlan;
+      state=setFocus(state,focus.dataset.focus);
+      if(wasFirst)manualPaused=false;
+      save();render();nextStepAt=Date.now()+hold();
+      game.querySelector(`[data-focus="${focus.dataset.focus}"]`)?.focus({preventScroll:true});
+    }catch(err){console.error(err);notify('现在暂时不能改安排，先把眼前的事情决定好。');}
+    return;
+  }
+  const appointment=e.target.closest('[data-arrange]');
+  if(appointment){
+    try{
+      state=arrange(state,appointment.dataset.arrange);save();render();nextStepAt=Date.now()+hold();
+      const planner=game.querySelector('.life-planner');
+      if(planner?.getBoundingClientRect().top<12)planner.scrollIntoView({block:'start',behavior:'instant'});
+      notify('先记下今年的安排。投入会随日子经过。');
+    }catch(err){console.error(err);notify('这件事今年暂时排不开，看看安排里的条件。');}
+    return;
+  }
   const choice=e.target.closest('[data-choice]');
   if(choice&&choice.dataset.event===state.pending){
     try{state=choose(state,choice.dataset.choice);save();render();nextStepAt=Date.now()+hold();revealScene();}
@@ -145,6 +182,7 @@ game.addEventListener('click',async e=>{
   }
   const action=e.target.closest('[data-action]')?.dataset.action;
   if(action==='begin'){state=begin(state);manualPaused=false;save();render();nextStepAt=Date.now()+hold();game.scrollIntoView({block:'start',behavior:'instant'});}
+  if(action==='young-sample'){state=startYoungSample();manualPaused=false;save();render();nextStepAt=Date.now()+hold();game.querySelector('#current')?.scrollIntoView({block:'start',behavior:'instant'});}
   if(action==='pause'&&state.status==='living'){manualPaused=!manualPaused;nextStepAt=Date.now()+hold();updateTime();}
   if(action==='next'&&!state.pending&&state.status==='living'){
     const age=getNextAge(state);if(age!==null)progress(Math.max(1,age-state.age),true);
