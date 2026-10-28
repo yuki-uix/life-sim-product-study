@@ -1,8 +1,8 @@
 /** Fictional campus content. No engine, DOM, network or random generation. */
-import { getSocialOpening } from './campus-reactions.js?v=0.7.0';
+import { getSocialOpening } from './campus-reactions.js?v=0.8.0';
 export const CONFIG = Object.freeze({
-  version: '0.7.0',
-  schemaVersion: 7,
+  version: '0.8.0',
+  schemaVersion: 8,
   totalDays: 91,
   title: '大学慢慢来',
   programYears: 4,

@@ -224,7 +224,7 @@ test('v0.6 migration preserves active, completed, pending and ended lives withou
     for (const key of ['runId','day','revision','phase','focus','focusDays','weekFocusDays','skills','peopleMet','flags','events','favorites','resolvedStories','practiceDays','practicePlans','weekPracticeInputs','project','completedProjects']) {
       assert.deepEqual(state[key], old[key], key);
     }
-    assert.equal(state.schemaVersion, 7);
+    assert.equal(state.schemaVersion, 8);
     assert.equal(state.pending?.storyId, old.pending?.storyId);
     if (old.pending) assert.equal(state.pending.legacyVersion, 6);
     assert.equal(state.events.some(event => event.reaction), false);

@@ -1,12 +1,13 @@
-import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject, getRelationships } from './calendar-engine.js?v=0.7.0';
-import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.7.0';
+import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject, getRelationships, getSocialOptions, socialize } from './calendar-engine.js?v=0.8.0';
+import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.8.0';
 import { campusScene, avatar } from './campus-art.js';
 import { getStoryPresentation as getLegacyStoryPresentation } from './calendar-content-v5.js';
 import { getStoryPresentation as getV6StoryPresentation } from './calendar-content-v6.js';
-import { CHARACTER_NOTES } from './campus-reactions.js?v=0.7.0';
+import { getStoryPresentation as getV7StoryPresentation } from './calendar-content-v7.js';
+import { CHARACTER_NOTES } from './campus-reactions.js?v=0.8.0';
 
-const STORAGE_KEY = 'campus-slowly.save.v7';
-const LEGACY_KEYS = ['campus-slowly.save.v6','campus-slowly.save.v5','campus-slowly.save.v4'];
+const STORAGE_KEY = 'campus-slowly.save.v8';
+const LEGACY_KEYS = ['campus-slowly.save.v7','campus-slowly.save.v6','campus-slowly.save.v5','campus-slowly.save.v4'];
 const main = document.querySelector('#main');
 const restartDialog = document.querySelector('#restart-dialog');
 const detailDialog = document.querySelector('#detail-dialog');
@@ -109,12 +110,19 @@ function chooseFirstWeek() {
   openDetail('开学这周，课余想怎么过？', `<p>先试一种日常，之后随时可以调整。</p><div class="planning-options">${options.map(option => `<button type="button" class="story-choice" data-start-focus="${option.id}"><span>›</span><span><strong>${e(option.title)}</strong><small>${e(option.description)}</small></span></button>`).join('')}</div>`);
 }
 function peoplePanel() {
-  return `<section class="people-panel"><h2>渐渐认得的人</h2><div class="people-list">${game.peopleMet.map(id => `<button type="button" data-person="${id}" class="person-button">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small></span></button>`).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
+  return `<section class="people-panel"><h2>想找谁？</h2><p class="people-hint">点头像，聊聊或约一段课余。</p><div class="people-list">${game.peopleMet.map(id => {
+    const options = getSocialOptions(game,id);
+    const available = options.some(option => option.enabled);
+    const nextDays = options.map(option => option.nextAvailableDay).filter(Number.isInteger);
+    const nextDay = nextDays.length ? Math.min(...nextDays) : null;
+    const hint = game.phase === 'ended' ? '回看相处' : game.pending ? '先处理眼前的事' : available ? '聊聊 / 约一下 ›' : nextDay !== null ? `${dateLabel(nextDay)}可约` : '这阵子先各自忙';
+    return `<button type="button" data-person="${id}" class="person-button" aria-label="找${e(PEOPLE[id].name)}聊天或约活动">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small><small class="person-invite-hint">${e(hint)}</small></span></button>`;
+  }).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
 }
 function storyPanel() {
   if (!game.pending) return '';
   const story = STORIES.find(item => item.id === game.pending.storyId);
-  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : game.pending.legacyVersion === 6 ? getV6StoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
+  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : game.pending.legacyVersion === 6 ? getV6StoryPresentation(story.id, game) : game.pending.legacyVersion === 7 ? getV7StoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
   return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${choice.practiceHint ? `<small class="practice-hint">${e(choice.practiceHint)}</small>` : ''}${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
 }
 function reactionPanel() {
@@ -131,7 +139,7 @@ function reactionHTML(reaction) {
 }
 function entryHTML(event) {
   const starred = game.favorites.includes(event.id);
-  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p>${reactionHTML(event.reaction)}</div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
+  return `<article class="log-entry ${event.kind === 'story' || event.kind === 'social' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'social' ? '主动相处' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p>${reactionHTML(event.reaction)}</div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
 }
 function diary() {
   const entries = (logFilter === 'favorites' ? game.events.filter(event => game.favorites.includes(event.id)) : game.events).slice().reverse();
@@ -207,8 +215,25 @@ function showPerson(id) {
   const meeting = game.events.find(event => event.kind === 'meeting' && event.text.includes(PEOPLE[id].name));
   const note = id === 'ahe' ? '从入学起就住在同一间宿舍。饭点偶尔一起走，平时也各忙各的。' : meeting?.text || '这阵子在校园里渐渐熟悉起来。';
   const relationship = getRelationships(game).find(person => person.id === id);
+  const options = getSocialOptions(game,id);
+  const whenDay = options[0]?.whenDay;
+  const available = options.some(option => option.enabled) && !invalidSave;
+  const nextDays = options.map(option => option.nextAvailableDay).filter(Number.isInteger);
+  const nextDay = nextDays.length ? Math.min(...nextDays) : null;
+  const arrangement = invalidSave ? '先处理这份记录的问题，再安排下一段课余。'
+    : game.pending ? '眼前还有一件事等你回应，处理后再来安排相处。'
+    : !available && game.phase !== 'ended' && whenDay < CONFIG.totalDays
+      ? `${dateLabel(whenDay)}，${options[0]?.reason || '对方这段课余暂时没有空。'}${nextDay !== null ? ` 下次可约：${dateLabel(nextDay)}。` : ''}`
+    : Number.isInteger(whenDay) && whenDay < CONFIG.totalDays
+    ? `下一段课余是${dateLabel(whenDay)}。会度过一天，这天留给你们相处；平时的「${focusItem().title}」之后照常继续。`
+    : '这个秋天的试玩已经走到最后一天，之前的相处仍留在这里。';
+  const stage = {acquainted:'还在慢慢熟悉',visiting:'有了课表外的往来',continuing:'能接上上次的话',familiar:'渐渐熟悉彼此的日常'}[relationship?.stage];
   const interactions = game.events.filter(event => event.reaction?.personId === id).slice(-3).reverse();
-  openDetail(PEOPLE[id].name, `<div class="growth-person">${avatar(id)}<span>${e(PEOPLE[id].role)}</span></div><p>${e(note)}</p><p class="person-note">${e(CHARACTER_NOTES[id] || '')}</p>${relationship ? `<p class="person-note">${e(relationship.summary)}</p>` : ''}${interactions.length ? `<h3>最近的相处</h3>${interactions.map(event => `<article class="person-memory"><p class="eyebrow">${e(dateLabel(event.day))} · ${e(event.title)}</p>${reactionHTML(event.reaction)}</article>`).join('')}` : '<p class="detail-footnote">还没有留下两个人一起说过的片段。</p>'}`);
+  openDetail(PEOPLE[id].name, `<div class="growth-person">${avatar(id)}<span>${e(PEOPLE[id].role)}${stage ? `<small class="person-stage">${e(stage)}</small>` : ''}</span></div><section class="social-plans" aria-label="主动找${e(PEOPLE[id].name)}相处"><h3>聊聊，或者约点什么</h3><p class="social-time ${!available ? 'social-unavailable' : ''}">${e(arrangement)}</p><div class="social-options">${options.map(option => {
+    const reasonId = `social-${id}-${option.actionId}-reason`;
+    const nextDate = !option.enabled && Number.isInteger(option.nextAvailableDay) ? `下次可约：${dateLabel(option.nextAvailableDay)}。` : '';
+    return `<div class="social-option"><button type="button" class="social-choice" data-social-person="${id}" data-social-action="${e(option.actionId)}" data-social-revision="${game.revision}" ${!option.enabled || invalidSave ? `disabled aria-describedby="${reasonId}"` : ''}><strong>${e(option.title)}</strong><small>${e(option.description)}</small><span>${option.enabled && !invalidSave ? '用这段课余，找对方一起 ›' : '这次先不安排'}</span></button>${!option.enabled || invalidSave ? `<p id="${reasonId}" class="social-reason">${e(invalidSave ? '先处理这份记录的问题。' : option.reason)}${nextDate ? ` ${e(nextDate)}` : ''}</p>` : ''}</div>`;
+  }).join('')}</div></section>${relationship ? `<p class="person-note">${e(relationship.summary)}</p>` : ''}<details class="person-about"><summary>关于${e(PEOPLE[id].name)}</summary><p>${e(note)}</p><p>${e(CHARACTER_NOTES[id] || '')}</p></details>${interactions.length ? `<h3>最近的相处</h3>${interactions.map(event => `<article class="person-memory"><p class="eyebrow">${e(dateLabel(event.day))} · ${e(event.title)}</p><p class="person-memory-action">${e(event.text)}</p>${reactionHTML(event.reaction)}</article>`).join('')}` : '<p class="detail-footnote">以后一起聊过、做过的事，会留在这里。</p>'}`);
 }
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
@@ -219,6 +244,7 @@ document.addEventListener('click', event => {
     if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
     if (button.dataset.choice) {logFilter = 'all'; unseen = 0; finishChoice(choose(game,button.dataset.choice,game.revision)); if(!game.pending && !reactionEventId) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
     if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
+    if (button.dataset.socialAction && button.dataset.socialPerson) {logFilter = 'all'; unseen = 0; finishChoice(socialize(game,button.dataset.socialPerson,button.dataset.socialAction,Number(button.dataset.socialRevision))); return;}
     if (button.dataset.person) {showPerson(button.dataset.person); return;}
     if (button.dataset.planProject) {planProject(button.dataset.planProject); return;}
     if (button.dataset.project && button.dataset.approach) {finishChoice(startProject(game,button.dataset.project,button.dataset.approach,game.revision)); return;}

@@ -1,15 +1,18 @@
 /** Campus calendar and history-shaped practice. Pure rules, without a clock or DOM. */
-import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.7.0';
-import { validateSave as validateV6, migrateLegacySave as migratePreV6 } from './calendar-engine-v6.js';
+import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.8.0';
+import { validateSave as validateV7, migrateLegacySave as migratePreV7 } from './calendar-engine-v7.js';
 import { STORIES as V5_STORIES } from './calendar-content-v5.js';
 import { STORIES as V6_STORIES } from './calendar-content-v6.js';
-import { getSocialContext, getReaction, getReactionEcho } from './campus-reactions.js?v=0.7.0';
+import { STORIES as V7_STORIES } from './calendar-content-v7.js';
+import { getSocialContext, getReaction, getReactionEcho } from './campus-reactions.js?v=0.8.0';
+import { socialOptionsFor, buildSocialEvent } from './campus-social.js?v=0.8.0';
 export { CONFIG };
 const FOCUS_IDS = FOCUSES.map(item => item.id);
 const SKILL_IDS = Object.keys(SKILLS);
 const STORY_BY_ID = new Map(STORIES.map(item => [item.id, item]));
 const V5_STORY_BY_ID = new Map(V5_STORIES.map(item => [item.id, item]));
 const V6_STORY_BY_ID = new Map(V6_STORIES.map(item => [item.id, item]));
+const V7_STORY_BY_ID = new Map(V7_STORIES.map(item => [item.id, item]));
 const PROJECT_BY_ID = new Map(PROJECTS.map(item => [item.id, item]));
 const LOCATIONS = new Set(['gate', 'dorm', 'lake', 'club', 'hall']);
 const MAX_COMMANDS = 2048;
@@ -35,7 +38,7 @@ function initialState(runId) {
     weekFocusDays: Object.fromEntries(FOCUS_IDS.map(id => [id, 0])),
     skills: Object.fromEntries(SKILL_IDS.map(id => [id, 0])), peopleMet: ['ahe'], flags: {},
     events: [], favorites: [], pending: null, resolvedStories: [], commands: [],
-    project: null, completedProjects: [], ...practiceState() };
+    project: null, completedProjects: [], socialDays: 0, weekSocialDays: 0, ...practiceState() };
   for (const entry of CALENDAR_LOGS.filter(item => item.day === 0)) appendEvent(state, {
     kind: entry.kind || 'calendar', title: '九月，开学了', text: entry.text, location: entry.location, contentId: entry.id });
   return state;
@@ -175,6 +178,18 @@ function progressProject(state) {
   state.completedProjects.push({ id: project.id, day: state.day, sourceEventId: event.id, approachId }); state.project = null;
 }
 function weeklyRecord(state) {
+  if (state.weekSocialDays >= 4) {
+    const encounters = state.events.filter(event => event.kind === 'social' && event.day > state.day - 7 && event.day <= state.day);
+    const names = [...new Set(encounters.map(event => PEOPLE[event.personId].name))];
+    const chats = encounters.some(event => event.actionId === 'chat');
+    const activities = encounters.some(event => event.actionId === 'activity');
+    const detail = chats && activities ? '有时只是聊几句，有时约着一起做点小事。'
+      : chats ? '话题从眼前的小事接起，没聊完的就留到下次。' : '几段课余约着一起过，事情做到了哪儿，就先停在哪儿。';
+    appendEvent(state, {kind:'daily', contentId:'social_week', text:`这周有几次，课后去找了${names.join('、')}。${detail}`,
+      location:encounters.at(-1)?.location || 'dorm', sourceEventIds:encounters.map(event => event.id)});
+    state.weekFocusDays = Object.fromEntries(FOCUS_IDS.map(id=>[id,0])); state.weekPracticeInputs=[]; state.weekSocialDays=0;
+    return;
+  }
   const weeklyFocus = [...FOCUS_IDS].sort((a,b) => state.weekFocusDays[b]-state.weekFocusDays[a] || (a===state.focus ? -1 : b===state.focus ? 1 : 0))[0];
   const skillId = skillFor(weeklyFocus);
   const inputs = state.weekPracticeInputs.filter(item => item.skillId === skillId);
@@ -185,15 +200,21 @@ function weeklyRecord(state) {
   appendEvent(state, { kind:'daily', text:useStyle ? practiceWeeklyText(skillId,dominant.styleId,Math.floor(state.day/7)-1) : weeklyText(weeklyFocus,Math.floor(state.day/7)-1),
     location:FOCUSES.find(item=>item.id===weeklyFocus).location, focusId:weeklyFocus,
     ...(useStyle ? {practice:{skillId,styleId:dominant.styleId,days:dominant.count},sourceEventIds:[...new Set(styleInputs.map(item=>item.sourceEventId))]} : {}) });
-  state.weekFocusDays = Object.fromEntries(FOCUS_IDS.map(id=>[id,0])); state.weekPracticeInputs=[];
+  state.weekFocusDays = Object.fromEntries(FOCUS_IDS.map(id=>[id,0])); state.weekPracticeInputs=[]; state.weekSocialDays=0;
 }
-function advanceOneDay(state) {
-  state.day += 1; state.focusDays[state.focus] += 1; state.weekFocusDays[state.focus] += 1;
-  state.skills.record = skillLevel(state.focusDays.walk); state.skills.organize = skillLevel(state.focusDays.club);
-  const skillId = skillFor(state.focus), plan = skillId && state.practicePlans[skillId];
-  if (plan) {
-    state.practiceDays[skillId][plan.styleId] += 1;
-    state.weekPracticeInputs.push({skillId,styleId:plan.styleId,sourceEventId:plan.sourceEventId});
+function advanceOneDay(state, socialEvent = null) {
+  state.day += 1;
+  if (socialEvent) {
+    state.socialDays += 1; state.weekSocialDays += 1;
+    appendEvent(state, socialEvent);
+  } else {
+    state.focusDays[state.focus] += 1; state.weekFocusDays[state.focus] += 1;
+    state.skills.record = skillLevel(state.focusDays.walk); state.skills.organize = skillLevel(state.focusDays.club);
+    const skillId = skillFor(state.focus), plan = skillId && state.practicePlans[skillId];
+    if (plan) {
+      state.practiceDays[skillId][plan.styleId] += 1;
+      state.weekPracticeInputs.push({skillId,styleId:plan.styleId,sourceEventId:plan.sourceEventId});
+    }
   }
   for (const [focusId,personId,text] of [
     ['club','xiaoman','活动室去了几回，负责开门的小满已经认得你了。碰到时，你们会打个招呼。'],
@@ -207,8 +228,24 @@ function advanceOneDay(state) {
     const source = state.events.find(event=>event.kind==='story'&&event.flagsAdded?.[entry.requiresFlag]);
     appendEvent(state,{kind:'daily',text:getReactionEcho(entry.id,state)||entry.text,location:entry.location,contentId:entry.id,sourceEventIds:source?[source.id]:[]});
   }
-  progressProject(state); openAvailableStory(state);
+  if (!socialEvent) progressProject(state);
+  openAvailableStory(state);
   if (state.day >= CONFIG.totalDays-1 && !state.pending) state.phase='ended';
+}
+function reduceSocial(previous, personId, actionId, expectedRevision = previous.revision) {
+  assertRevision(previous, expectedRevision);
+  if (!PEOPLE[personId]) throw fail('unknown_person', '没有认识这位同学。');
+  if (!previous.peopleMet.includes(personId)) throw fail('person_unmet', `还没有认识${PEOPLE[personId].name}。`);
+  if (previous.phase === 'ended') throw fail('game_ended', '这段秋季生活已经结束。');
+  if (previous.pending) throw fail('pending_story', '先回应眼前的事，再找人相处。');
+  const option = socialOptionsFor(previous, personId, CONFIG.totalDays).find(item => item.actionId === actionId);
+  if (!option) throw fail('unknown_social_action', '没有这种相处安排。');
+  if (!option.enabled) throw fail('social_unavailable', option.reason || '这次课余暂时约不上。');
+  const event = buildSocialEvent(previous, personId, actionId, getSocialContext(previous, personId));
+  const state = clone(previous);
+  advanceOneDay(state, event);
+  recordCommand(state, {type:'social', personId, actionId});
+  return state;
 }
 function reduceAdvance(previous,count) {
   if (!Number.isInteger(count)||count<1||count>CONFIG.totalDays) throw fail('invalid_time','时间只能按一到九十一天向前推进。');
@@ -229,7 +266,7 @@ function reduceNextMoment(previous) {
   recordCommand(state,{type:'moment'});return state;
 }
 function pendingStory(state) {
-  const catalogue = state.pending.legacy ? V5_STORY_BY_ID : state.pending.legacyVersion === 6 ? V6_STORY_BY_ID : STORY_BY_ID;
+  const catalogue = state.pending.legacy ? V5_STORY_BY_ID : state.pending.legacyVersion === 6 ? V6_STORY_BY_ID : state.pending.legacyVersion === 7 ? V7_STORY_BY_ID : STORY_BY_ID;
   return catalogue.get(state.pending.storyId);
 }
 function choicesFor(state) {
@@ -286,6 +323,8 @@ export function advanceDays(state,count=1){return reduceAdvance(checkedState(sta
 export function advanceToNextMoment(state){return reduceNextMoment(checkedState(state));}
 export function getChoices(state){return choicesFor(checkedState(state));}
 export function getProjects(state){return projectOptions(checkedState(state));}
+export function getSocialOptions(state,personId){return clone(socialOptionsFor(checkedState(state),personId,CONFIG.totalDays));}
+export function socialize(state,personId,actionId,revision=state?.revision){return reduceSocial(checkedState(state),personId,actionId,revision);}
 export function getRelationships(candidate){
   const state=checkedState(candidate);
   return state.peopleMet.map(personId=>({id:personId,...clone(getSocialContext(state,personId))}));
@@ -300,7 +339,7 @@ export function toggleFavorite(candidate,eventId){
 function sourceText(state,eventId){
   const event=state.events.find(item=>item.id===eventId);if(!event)return'';
   const choice=event.choiceId&&STORY_BY_ID.get(event.storyId)?.choices.find(item=>item.id===event.choiceId);
-  return `${dateInfo(event.day).label}，${choice?.title||event.title||event.text}`;
+  return `${dateInfo(event.day).label}，${event.choiceTitle||choice?.title||event.title||event.text}`;
 }
 export function getGrowth(candidate){
   const state=checkedState(candidate);
@@ -315,7 +354,7 @@ export function getGrowth(candidate){
   });
 }
 function isJsonValue(value,ancestors=new Set(),depth=0){
-  if(depth>32)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+  if(depth>40)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
   if(typeof value==='number')return Number.isFinite(value);if(typeof value!=='object'||ancestors.has(value))return false;
   const prototype=Object.getPrototypeOf(value);if(!Array.isArray(value)&&prototype!==Object.prototype&&prototype!==null)return false;
   ancestors.add(value);const valid=Object.values(value).every(item=>isJsonValue(item,ancestors,depth+1));ancestors.delete(value);return valid;
@@ -326,10 +365,11 @@ function equalJson(a,b){
 }
 function validSnapshot(event){return typeof event.text==='string'&&event.text.trim().length>0&&event.text.length<=2500&&(event.title===undefined||(typeof event.title==='string'&&event.title.trim().length>0&&event.title.length<=200));}
 function importLegacy(snapshot){
-  const verified=validateV6(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
+  const verified=validateV7(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
   const old=verified.state;
   return{...clone(old),schemaVersion:CONFIG.schemaVersion,rulesVersion:CONFIG.version,
-    pending:old.pending?{...clone(old.pending),...(!old.pending.legacy?{legacyVersion:6}:{})}:null,
+    socialDays:0,weekSocialDays:0,
+    pending:old.pending?{...clone(old.pending),...(!old.pending.legacy&&!old.pending.legacyVersion?{legacyVersion:7}:{})}:null,
     commands:[{type:'legacy.import',snapshot:clone(old)}]};
 }
 /** Verify actual rules and choices by replay; this is not an anti-cheat identity boundary. */
@@ -356,6 +396,7 @@ export function validateSave(candidate){
       else if(command.type==='project.start')canonical=reduceStartProject(canonical,command.projectId,command.approachId);
       else if(command.type==='project.cancel')canonical=reduceCancelProject(canonical);
       else if(command.type==='moment')canonical=reduceNextMoment(canonical);
+      else if(command.type==='social')canonical=reduceSocial(canonical,command.personId,command.actionId);
       else return invalid('这份记录包含未知操作。');
       if(canonical.revision!==revision+1)return invalid('这份记录包含重复或过时操作。');
     }
@@ -374,12 +415,12 @@ export function getSummary(candidate){
   const state=checkedState(candidate);return{daysElapsed:state.day,focusDays:{...state.focusDays},skills:{...state.skills},
     skillStages:Object.fromEntries(SKILL_IDS.map(id=>[id,SKILLS[id].stages[state.skills[id]]])),peopleMet:[...state.peopleMet],events:clone(state.events),
     favorites:state.favorites.map(id=>clone(state.events.find(event=>event.id===id))),storiesCompleted:state.resolvedStories.length,phase:state.phase,
-    project:clone(state.project),completedProjects:clone(state.completedProjects),practiceDays:clone(state.practiceDays),practicePlans:clone(state.practicePlans)};
+    project:clone(state.project),completedProjects:clone(state.completedProjects),practiceDays:clone(state.practiceDays),practicePlans:clone(state.practicePlans),socialDays:state.socialDays};
 }
 export function migrateLegacySave(candidate){
   try{
     const value=typeof candidate==='string'?JSON.parse(candidate):candidate;
-    const legacy=value?.schemaVersion===6?validateV6(value):migratePreV6(value);
+    const legacy=value?.schemaVersion===7?validateV7(value):migratePreV7(value);
     if(!legacy.valid)return{valid:false,state:null,error:legacy.error};
     return validateSave(importLegacy(legacy.state));
   }catch{return{valid:false,state:null,error:'这份旧记录暂时无法接续，原记录不会被覆盖。'};}
