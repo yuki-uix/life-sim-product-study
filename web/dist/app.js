@@ -41,7 +41,18 @@ function toast(text) {
   toastTimer = setTimeout(() => { target.hidden = true; }, 3200);
 }
 function focusItem() { return FOCUSES.find(item => item.id === game.focus); }
-function pause() { running = false; accumulated = 0; }
+function resetClock() { accumulated = 0; lastTick = performance.now(); }
+function pause() { running = false; resetClock(); }
+function continueLife(state = game) {
+  started = true;
+  running = !state.pending && state.phase !== 'ended' && !invalidSave && !document.hidden;
+  resetClock();
+}
+function finishChoice(next, {latest = true} = {}) {
+  if (detailDialog.open) detailDialog.close();
+  continueLife(next);
+  update(next, {latest});
+}
 function dateLabel(day) { return dateInfo(day).label; }
 function calendar() {
   const date = dateInfo(game.day);
@@ -145,26 +156,24 @@ function render({newStory = false, latest = false} = {}) {
 }
 function update(next, {latest = false} = {}) {
   const oldLength = game.events.length;
-  const growthChanged = growthSignature(next) !== growthSignature(game);
-  const prepared = next.completedProjects.length > game.completedProjects.length;
   const newStory = !game.pending && next.pending;
   const scroll = document.querySelector('#log-scroll');
   const readingEarlier = scroll && scroll.scrollTop >= 35;
   game = next;
   if (readingEarlier) unseen += Math.max(0,game.events.length-oldLength);
   persist(); render({newStory:Boolean(newStory), latest});
-  if ((growthChanged || prepared) && !next.pending && next.phase !== 'ended' && !readingEarlier) document.querySelector('.growth-panel')?.scrollIntoView({block:'start',behavior:'smooth'});
 }
 function advance(count) {
   const next = advanceDays(game,count);
   const newAbility = growthSignature(next) !== growthSignature(game);
   const projectDone = next.completedProjects.length > game.completedProjects.length;
-  if (next.pending || next.phase === 'ended' || newAbility || projectDone) pause();
+  if (next.pending || next.phase === 'ended') pause();
   update(next);
-  if ((newAbility || projectDone) && !next.pending) toast(newAbility ? '有了新的做法，看看现在能试什么。' : '准备先做到这里，接下来可以继续生活。');
+  if ((newAbility || projectDone) && !next.pending) toast(projectDone ? '手边的准备做完了，记在了今天。' : '有了新的做法，有空可以看看最近的自己。');
 }
 function openDetail(title, content) {
-  pause(); render();
+  // The open dialog freezes the timer without changing the player's run/pause intent.
+  resetClock();
   document.querySelector('#detail-title').textContent = title;
   document.querySelector('#detail-content').innerHTML = content;
   detailDialog.showModal();
@@ -183,21 +192,21 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
   try {
-    if (button.dataset.startFocus) {game = setFocus(game,button.dataset.startFocus); started = true; running = true; accumulated = 0; lastTick = performance.now(); detailDialog.close(); persist(); render(); return;}
+    if (button.dataset.startFocus) {finishChoice(setFocus(game,button.dataset.startFocus)); return;}
     if (button.dataset.focus) {update(setFocus(game,button.dataset.focus)); focusOpen = false; document.querySelector('#focus-settings').open = false; return;}
     if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
-    if (button.dataset.choice) {pause(); logFilter = 'all'; unseen = 0; update(choose(game,button.dataset.choice,game.revision),{latest:true}); if(!game.pending) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
+    if (button.dataset.choice) {logFilter = 'all'; unseen = 0; finishChoice(choose(game,button.dataset.choice,game.revision)); if(!game.pending) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
     if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
     if (button.dataset.person) {showPerson(button.dataset.person); return;}
     if (button.dataset.planProject) {planProject(button.dataset.planProject); return;}
-    if (button.dataset.project && button.dataset.approach) {pause(); started = true; const next = startProject(game,button.dataset.project,button.dataset.approach,game.revision); detailDialog.close(); update(next,{latest:true}); return;}
+    if (button.dataset.project && button.dataset.approach) {finishChoice(startProject(game,button.dataset.project,button.dataset.approach,game.revision)); return;}
     if (button.dataset.practiceSkill) {planPractice(button.dataset.practiceSkill); return;}
-    if (button.dataset.practice && button.dataset.skill) {const next = setPractice(game,button.dataset.skill,button.dataset.practice,game.revision); detailDialog.close(); update(next,{latest:true}); return;}
+    if (button.dataset.practice && button.dataset.skill) {finishChoice(setPractice(game,button.dataset.skill,button.dataset.practice,game.revision)); return;}
     if (button.dataset.origin) {showOrigin(button.dataset.origin); return;}
-    if (button.dataset.resumeProject) {const project = getProjects(game).find(item => item.id === button.dataset.resumeProject); let next = setFocus(game,project.focusId); if(project.approachId) next = setPractice(next,project.requiresSkill.id,project.approachId,next.revision); update(next,{latest:true}); return;}
+    if (button.dataset.resumeProject) {const project = getProjects(game).find(item => item.id === button.dataset.resumeProject); let next = setFocus(game,project.focusId); if(project.approachId) next = setPractice(next,project.requiresSkill.id,project.approachId,next.revision); finishChoice(next); return;}
     if (button.dataset.filter) {logFilter = button.dataset.filter; render({latest:true}); return;}
     switch(button.dataset.action) {
-      case 'play': if(!started && game.focus === 'easy'){chooseFirstWeek();break;} started = true; running = !running; accumulated = 0; lastTick = performance.now(); persist(); render(); break;
+      case 'play': if(!started && game.focus === 'easy'){chooseFirstWeek();break;} if(running) pause(); else continueLife(); persist(); render(); break;
       case 'forward': {
         started = true; pause();
         // Preserve the chance to act when a skill or preparation changes.
@@ -206,14 +215,16 @@ document.addEventListener('click', event => {
       case 'latest': logFilter = 'all'; unseen = 0; render({latest:true}); break;
       case 'growth': showGrowth(); break;
       case 'cancel-project': openDetail('先放下这次准备？','<p>已经练过的本领仍然保留。以后想重新做这件事，要从头准备。</p><button type="button" class="secondary-button" data-action="confirm-cancel-project">先放下，试试别的</button>'); break;
-      case 'confirm-cancel-project': {const next = cancelProject(game,game.revision); detailDialog.close(); update(next); break;}
-      case 'restart': pause(); render(); restartDialog.showModal(); break;
+      case 'confirm-cancel-project': {finishChoice(cancelProject(game,game.revision)); break;}
+      case 'restart': resetClock(); restartDialog.showModal(); break;
       case 'cancel-restart': restartDialog.close(); break;
       case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
       case 'close-detail': detailDialog.close(); break;
     }
   } catch(error) {pause(); render(); toast(error.message || '这一步暂时没有完成，请再试一次。');}
 });
+// Closing either dialog (including Escape) gives the player a fresh day interval.
+for (const dialog of [detailDialog, restartDialog]) dialog.addEventListener('close', resetClock);
 document.addEventListener('keydown', event => {
   if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
   if (event.code === 'Space' && event.target === document.body) {event.preventDefault(); document.querySelector('[data-action="play"]:not(:disabled)')?.click();}
