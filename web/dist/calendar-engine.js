@@ -1,12 +1,15 @@
 /** Campus calendar and history-shaped practice. Pure rules, without a clock or DOM. */
-import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.6.0';
-import { validateSave as validateV5, migrateLegacySave as migrateV4 } from './calendar-engine-v5.js';
+import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.7.0';
+import { validateSave as validateV6, migrateLegacySave as migratePreV6 } from './calendar-engine-v6.js';
 import { STORIES as V5_STORIES } from './calendar-content-v5.js';
+import { STORIES as V6_STORIES } from './calendar-content-v6.js';
+import { getSocialContext, getReaction, getReactionEcho } from './campus-reactions.js?v=0.7.0';
 export { CONFIG };
 const FOCUS_IDS = FOCUSES.map(item => item.id);
 const SKILL_IDS = Object.keys(SKILLS);
 const STORY_BY_ID = new Map(STORIES.map(item => [item.id, item]));
 const V5_STORY_BY_ID = new Map(V5_STORIES.map(item => [item.id, item]));
+const V6_STORY_BY_ID = new Map(V6_STORIES.map(item => [item.id, item]));
 const PROJECT_BY_ID = new Map(PROJECTS.map(item => [item.id, item]));
 const LOCATIONS = new Set(['gate', 'dorm', 'lake', 'club', 'hall']);
 const MAX_COMMANDS = 2048;
@@ -202,7 +205,7 @@ function advanceOneDay(state) {
   if (state.day % 7 === 0) weeklyRecord(state);
   for (const entry of AFTER_LOGS) if (entry.day === state.day && state.flags[entry.requiresFlag]) {
     const source = state.events.find(event=>event.kind==='story'&&event.flagsAdded?.[entry.requiresFlag]);
-    appendEvent(state,{kind:'daily',text:entry.text,location:entry.location,contentId:entry.id,sourceEventIds:source?[source.id]:[]});
+    appendEvent(state,{kind:'daily',text:getReactionEcho(entry.id,state)||entry.text,location:entry.location,contentId:entry.id,sourceEventIds:source?[source.id]:[]});
   }
   progressProject(state); openAvailableStory(state);
   if (state.day >= CONFIG.totalDays-1 && !state.pending) state.phase='ended';
@@ -225,19 +228,31 @@ function reduceNextMoment(previous) {
   }
   recordCommand(state,{type:'moment'});return state;
 }
+function pendingStory(state) {
+  const catalogue = state.pending.legacy ? V5_STORY_BY_ID : state.pending.legacyVersion === 6 ? V6_STORY_BY_ID : STORY_BY_ID;
+  return catalogue.get(state.pending.storyId);
+}
 function choicesFor(state) {
   if(!state.pending)return[];
-  const story=state.pending.legacy ? V5_STORY_BY_ID.get(state.pending.storyId) : STORY_BY_ID.get(state.pending.storyId);
+  const story=pendingStory(state);
   return story.choices.map(choice=>{
-    let reason='';
-    if(choice.requiresSkill && state.skills[choice.requiresSkill.id]<choice.requiresSkill.min) reason=`还需要${SKILLS[choice.requiresSkill.id].name}达到“${SKILLS[choice.requiresSkill.id].stages[choice.requiresSkill.min]}”。`;
+    let reason='',reasonCode='';
+    if(choice.requiresSkill && state.skills[choice.requiresSkill.id]<choice.requiresSkill.min) {
+      reason=`还需要${SKILLS[choice.requiresSkill.id].name}达到“${SKILLS[choice.requiresSkill.id].stages[choice.requiresSkill.min]}”。`;
+      reasonCode='missing_skill';
+    }
     else if(!practiceAllowed(state,choice.requiresPractice)) {
       const style=practiceFor(choice.requiresPractice.skillId,choice.requiresPractice.styleId);
       reason=`还需要在“${style.name}”这条练法里多些真实经验。`;
+      reasonCode='missing_practice';
+    }
+    else if(choice.requiresCooperation && getSocialContext(state,choice.requiresCooperation.personId).cooperation<choice.requiresCooperation.min) {
+      reason=`还没有和${PEOPLE[choice.requiresCooperation.personId].name}一起处理现场的经历；可以先搭档确认，或在日常里练习照顾现场。`;
+      reasonCode='missing_cooperation';
     }
     const practiceChange=STORY_BY_ID.get(story.id)?.choices.find(item=>item.id===choice.id)?.practiceChange;
     const style=practiceChange&&practiceFor(practiceChange.skillId,practiceChange.styleId);
-    return{id:choice.id,title:choice.title,description:choice.description,enabled:!reason,reason,
+    return{id:choice.id,title:choice.title,description:choice.description,enabled:!reason,reason,...(reasonCode?{reasonCode}:{}),
       ...(practiceChange?{practiceChange:clone(practiceChange),practiceHint:`之后${focusFor(practiceChange.skillId)==='walk'?'散步记录':'去社团'}时，会试着${style.action}。`}:{})};
   });
 }
@@ -245,17 +260,20 @@ function reduceChoice(previous,choiceId,expectedRevision=previous.revision) {
   assertRevision(previous,expectedRevision);
   if(previous.phase==='ended')throw fail('game_ended','这段秋季生活已经结束。');
   if(!previous.pending)throw fail('no_pending_story','此刻没有需要回应的事，生活可以继续向前。');
-  const story=previous.pending.legacy ? V5_STORY_BY_ID.get(previous.pending.storyId) : STORY_BY_ID.get(previous.pending.storyId);
+  const story=pendingStory(previous);
   const choice=story.choices.find(item=>item.id===choiceId);
   if(!choice)throw fail('unknown_choice','这不是眼前这件事的选项。');
   const allowed=choicesFor(previous).find(item=>item.id===choiceId);
-  if(!allowed.enabled)throw fail(choice.requiresPractice?'missing_practice':'missing_skill',allowed.reason);
+  if(!allowed.enabled)throw fail(allowed.reasonCode,allowed.reason);
   const state=clone(previous),flagsAdded={};
   for(const[key,value]of Object.entries(choice.flags||{})){flagsAdded[key]=value;state.flags[key]=value;}
   const currentChoice=STORY_BY_ID.get(story.id)?.choices.find(item=>item.id===choiceId);
   const practiceChange=currentChoice?.practiceChange;
-  const event=appendEvent(state,{kind:'story',title:story.title,text:choice.result,location:story.location,storyId:story.id,choiceId,flagsAdded,
-    sourceEventIds:sourcesForStory(previous,STORY_BY_ID.get(story.id)||story),...(practiceChange?{practiceChange:clone(practiceChange)}:{})});
+  // Resolve from the history before this choice; the response is a saved fact, not a fresh roll when read.
+  const reaction=getReaction(previous,story.id,choiceId);
+  const event=appendEvent(state,{kind:'story',title:story.title,text:choice.result,location:story.location,storyId:story.id,choiceId,choiceTitle:choice.title,flagsAdded,
+    sourceEventIds:sourcesForStory(previous,STORY_BY_ID.get(story.id)||story),...(practiceChange?{practiceChange:clone(practiceChange)}:{}),
+    ...(reaction?{reaction:clone(reaction)}:{})});
   if(practiceChange)setPlan(state,practiceChange.skillId,practiceChange.styleId,event.id);
   state.resolvedStories.push(story.id);state.pending=null;openAvailableStory(state);
   if(state.day>=CONFIG.totalDays-1&&!state.pending)state.phase='ended';
@@ -268,6 +286,10 @@ export function advanceDays(state,count=1){return reduceAdvance(checkedState(sta
 export function advanceToNextMoment(state){return reduceNextMoment(checkedState(state));}
 export function getChoices(state){return choicesFor(checkedState(state));}
 export function getProjects(state){return projectOptions(checkedState(state));}
+export function getRelationships(candidate){
+  const state=checkedState(candidate);
+  return state.peopleMet.map(personId=>({id:personId,...clone(getSocialContext(state,personId))}));
+}
 export function startProject(state,id,approachId,revision=state?.revision){return reduceStartProject(checkedState(state),id,approachId,revision);}
 export function cancelProject(state,revision=state?.revision){return reduceCancelProject(checkedState(state),revision);}
 export function choose(state,id,revision=state?.revision){return reduceChoice(checkedState(state),id,revision);}
@@ -293,7 +315,7 @@ export function getGrowth(candidate){
   });
 }
 function isJsonValue(value,ancestors=new Set(),depth=0){
-  if(depth>24)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+  if(depth>32)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
   if(typeof value==='number')return Number.isFinite(value);if(typeof value!=='object'||ancestors.has(value))return false;
   const prototype=Object.getPrototypeOf(value);if(!Array.isArray(value)&&prototype!==Object.prototype&&prototype!==null)return false;
   ancestors.add(value);const valid=Object.values(value).every(item=>isJsonValue(item,ancestors,depth+1));ancestors.delete(value);return valid;
@@ -304,13 +326,11 @@ function equalJson(a,b){
 }
 function validSnapshot(event){return typeof event.text==='string'&&event.text.trim().length>0&&event.text.length<=2500&&(event.title===undefined||(typeof event.title==='string'&&event.title.trim().length>0&&event.title.length<=200));}
 function importLegacy(snapshot){
-  const verified=validateV5(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
+  const verified=validateV6(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
   const old=verified.state;
   return{...clone(old),schemaVersion:CONFIG.schemaVersion,rulesVersion:CONFIG.version,
-    project:old.project?{...clone(old.project),approachId:null}:null,
-    completedProjects:old.completedProjects.map(item=>({...clone(item),approachId:null})),
-    pending:old.pending?{...clone(old.pending),legacy:true}:null,
-    ...practiceState(),commands:[{type:'legacy.import',snapshot:clone(old)}]};
+    pending:old.pending?{...clone(old.pending),...(!old.pending.legacy?{legacyVersion:6}:{})}:null,
+    commands:[{type:'legacy.import',snapshot:clone(old)}]};
 }
 /** Verify actual rules and choices by replay; this is not an anti-cheat identity boundary. */
 export function validateSave(candidate){
@@ -359,7 +379,7 @@ export function getSummary(candidate){
 export function migrateLegacySave(candidate){
   try{
     const value=typeof candidate==='string'?JSON.parse(candidate):candidate;
-    const legacy=value?.schemaVersion===4?migrateV4(value):validateV5(value);
+    const legacy=value?.schemaVersion===6?validateV6(value):migratePreV6(value);
     if(!legacy.valid)return{valid:false,state:null,error:legacy.error};
     return validateSave(importLegacy(legacy.state));
   }catch{return{valid:false,state:null,error:'这份旧记录暂时无法接续，原记录不会被覆盖。'};}

@@ -32,7 +32,10 @@ function projectStory(projectId) {
   state = engine.advanceDays(state, 7);
   const target = STORIES.find(story => story.requiresProject === projectId);
   while (state.phase !== 'ended' && state.pending?.storyId !== target.id) {
-    state = state.pending ? settle(state) : engine.advanceDays(state, 91);
+    if (projectId === 'host_screen' && state.pending?.storyId === 'club_screen') {
+      state = engine.choose(state, 'screen_help');
+      state = engine.setPractice(state, 'organize', 'curate');
+    } else state = state.pending ? settle(state) : engine.advanceDays(state, 91);
   }
   assert.equal(state.pending?.storyId, target.id);
   return state;
@@ -140,7 +143,7 @@ test('daily skill alone never fabricates the two player-initiated story opportun
   }
 });
 
-test('both preparations lead to real later stories with skill-gated independent participation', () => {
+test('both preparations lead to real later stories with skill and shared-experience gates', () => {
   for (const project of PROJECTS) {
     const state = projectStory(project.id);
     assert.equal(state.skills[project.requiresSkill.id], 3);
@@ -200,7 +203,7 @@ test('verified v0.4 snapshots migrate with dates, skills, choices, text and favo
     const original = copy(old);
     const migrated = engine.migrateLegacySave(JSON.stringify(old));
     assert.equal(migrated.valid,true);
-    assert.equal(migrated.state.schemaVersion,6);
+    assert.equal(migrated.state.schemaVersion,7);
     for (const key of ['runId','day','revision','phase','focus','focusDays','weekFocusDays','skills','peopleMet','flags','events','favorites','resolvedStories']) assert.deepEqual(migrated.state[key],old[key],key);
     assert.equal(migrated.state.pending?.storyId,old.pending?.storyId);
     assert.equal(migrated.state.commands[0].type,'legacy.import');

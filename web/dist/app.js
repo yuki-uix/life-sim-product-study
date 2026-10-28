@@ -1,10 +1,12 @@
-import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject } from './calendar-engine.js?v=0.6.0';
-import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.6.0';
+import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject, getRelationships } from './calendar-engine.js?v=0.7.0';
+import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.7.0';
 import { campusScene, avatar } from './campus-art.js';
 import { getStoryPresentation as getLegacyStoryPresentation } from './calendar-content-v5.js';
+import { getStoryPresentation as getV6StoryPresentation } from './calendar-content-v6.js';
+import { CHARACTER_NOTES } from './campus-reactions.js?v=0.7.0';
 
-const STORAGE_KEY = 'campus-slowly.save.v6';
-const LEGACY_KEYS = ['campus-slowly.save.v5','campus-slowly.save.v4'];
+const STORAGE_KEY = 'campus-slowly.save.v7';
+const LEGACY_KEYS = ['campus-slowly.save.v6','campus-slowly.save.v5','campus-slowly.save.v4'];
 const main = document.querySelector('#main');
 const restartDialog = document.querySelector('#restart-dialog');
 const detailDialog = document.querySelector('#detail-dialog');
@@ -13,7 +15,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&'
 const e = escapeHTML;
 let game, running = false, speed = 1, started = false, invalidSave = false, saveError = false;
 let accumulated = 0, lastTick = performance.now(), focusOpen = false, logFilter = 'all';
-let unseen = 0, toastTimer, growthOpen = false;
+let unseen = 0, toastTimer, growthOpen = false, reactionEventId = null;
 
 function load() {
   try {
@@ -49,9 +51,15 @@ function continueLife(state = game) {
   resetClock();
 }
 function finishChoice(next, {latest = true} = {}) {
+  const oldIds = new Set(game.events.map(event => event.id));
+  reactionEventId = next.events.findLast(event => !oldIds.has(event.id) && event.reaction)?.id || null;
   if (detailDialog.open) detailDialog.close();
   continueLife(next);
   update(next, {latest});
+  if (reactionEventId) {
+    document.querySelector('#reaction-title')?.focus({preventScroll:true});
+    document.querySelector('.reaction-panel')?.scrollIntoView({block:'start',behavior:'smooth'});
+  }
 }
 function dateLabel(day) { return dateInfo(day).label; }
 function calendar() {
@@ -106,12 +114,24 @@ function peoplePanel() {
 function storyPanel() {
   if (!game.pending) return '';
   const story = STORIES.find(item => item.id === game.pending.storyId);
-  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
+  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : game.pending.legacyVersion === 6 ? getV6StoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
   return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${choice.practiceHint ? `<small class="practice-hint">${e(choice.practiceHint)}</small>` : ''}${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
+}
+function reactionPanel() {
+  const event = game.events.find(item => item.id === reactionEventId);
+  if (!event?.reaction) return '';
+  const reaction = event.reaction, person = PEOPLE[reaction.personId];
+  const choice = STORIES.find(story => story.id === event.storyId)?.choices.find(item => item.id === event.choiceId);
+  const choiceTitle = event.choiceTitle || choice?.title;
+  return `<section class="reaction-panel" aria-labelledby="reaction-title"><p class="eyebrow">${e(dateLabel(event.day))} · 那天的回应</p><h2 id="reaction-title" tabindex="-1">${avatar(reaction.personId)}${e(person.name)}</h2>${choiceTitle ? `<p class="reaction-choice">你选择了「${e(choiceTitle)}」。</p>` : ''}<p class="reaction-dialogue">${e(reaction.text)}</p>${reaction.note ? `<p class="reaction-note">${e(reaction.note)}</p>` : ''}<button type="button" class="text-button" data-action="close-reaction">收起这段对话</button></section>`;
+}
+function reactionHTML(reaction) {
+  if (!reaction) return '';
+  return `<div class="log-reaction" aria-label="${e(PEOPLE[reaction.personId].name)}的回应"><strong>${e(PEOPLE[reaction.personId].name)}</strong><p>${e(reaction.text)}</p></div>`;
 }
 function entryHTML(event) {
   const starred = game.favorites.includes(event.id);
-  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p></div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
+  return `<article class="log-entry ${event.kind === 'story' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p>${reactionHTML(event.reaction)}</div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
 }
 function diary() {
   const entries = (logFilter === 'favorites' ? game.events.filter(event => game.favorites.includes(event.id)) : game.events).slice().reverse();
@@ -136,7 +156,7 @@ function render({newStory = false, latest = false} = {}) {
   if (growthDetails) growthOpen = growthDetails.open;
   const details = document.querySelector('#focus-settings');
   if (details) focusOpen = details.open;
-  main.innerHTML = `${invalidSave ? '<div class="save-warning">这份记录暂时无法读取，原记录已保留。<button type="button" data-action="restart" class="text-button">重新开始这一段</button></div>' : ''}${calendar()}<div class="campus-layout"><aside class="campus-sidebar">${focusPanel()}${growthPanel()}<div class="quiet-scene" aria-hidden="true">${campusScene(focusItem().location, 'autumn')}</div>${peoplePanel()}</aside><div class="life-column">${!started ? '<p class="opening-note">开学了。课表之外的时间，先按自己喜欢的方式过。</p>' : ''}${storyPanel()}${endingPanel()}${diary()}</div></div>`;
+  main.innerHTML = `${invalidSave ? '<div class="save-warning">这份记录暂时无法读取，原记录已保留。<button type="button" data-action="restart" class="text-button">重新开始这一段</button></div>' : ''}${calendar()}<div class="campus-layout"><aside class="campus-sidebar">${focusPanel()}${growthPanel()}<div class="quiet-scene" aria-hidden="true">${campusScene(focusItem().location, 'autumn')}</div>${peoplePanel()}</aside><div class="life-column">${!started ? '<p class="opening-note">开学了。课表之外的时间，先按自己喜欢的方式过。</p>' : ''}${reactionPanel()}${storyPanel()}${endingPanel()}${diary()}</div></div>`;
   const log = document.querySelector('#log-scroll');
   if (latest || nearTop) {log.scrollTop = 0; unseen = 0; document.querySelector('.new-records')?.remove();}
   else {
@@ -186,7 +206,9 @@ function showPerson(id) {
   if (!game.peopleMet.includes(id)) return;
   const meeting = game.events.find(event => event.kind === 'meeting' && event.text.includes(PEOPLE[id].name));
   const note = id === 'ahe' ? '从入学起就住在同一间宿舍。饭点偶尔一起走，平时也各忙各的。' : meeting?.text || '这阵子在校园里渐渐熟悉起来。';
-  openDetail(PEOPLE[id].name, `<div class="growth-person">${avatar(id)}<span>${e(PEOPLE[id].role)}</span></div><p>${e(note)}</p>`);
+  const relationship = getRelationships(game).find(person => person.id === id);
+  const interactions = game.events.filter(event => event.reaction?.personId === id).slice(-3).reverse();
+  openDetail(PEOPLE[id].name, `<div class="growth-person">${avatar(id)}<span>${e(PEOPLE[id].role)}</span></div><p>${e(note)}</p><p class="person-note">${e(CHARACTER_NOTES[id] || '')}</p>${relationship ? `<p class="person-note">${e(relationship.summary)}</p>` : ''}${interactions.length ? `<h3>最近的相处</h3>${interactions.map(event => `<article class="person-memory"><p class="eyebrow">${e(dateLabel(event.day))} · ${e(event.title)}</p>${reactionHTML(event.reaction)}</article>`).join('')}` : '<p class="detail-footnote">还没有留下两个人一起说过的片段。</p>'}`);
 }
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
@@ -195,7 +217,7 @@ document.addEventListener('click', event => {
     if (button.dataset.startFocus) {finishChoice(setFocus(game,button.dataset.startFocus)); return;}
     if (button.dataset.focus) {update(setFocus(game,button.dataset.focus)); focusOpen = false; document.querySelector('#focus-settings').open = false; return;}
     if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
-    if (button.dataset.choice) {logFilter = 'all'; unseen = 0; finishChoice(choose(game,button.dataset.choice,game.revision)); if(!game.pending) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
+    if (button.dataset.choice) {logFilter = 'all'; unseen = 0; finishChoice(choose(game,button.dataset.choice,game.revision)); if(!game.pending && !reactionEventId) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
     if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
     if (button.dataset.person) {showPerson(button.dataset.person); return;}
     if (button.dataset.planProject) {planProject(button.dataset.planProject); return;}
@@ -213,12 +235,13 @@ document.addEventListener('click', event => {
         const next = advanceToNextMoment(game); logFilter = 'all'; unseen = 0; update(next,{latest:true}); break;
       }
       case 'latest': logFilter = 'all'; unseen = 0; render({latest:true}); break;
+      case 'close-reaction': reactionEventId = null; render(); document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); break;
       case 'growth': showGrowth(); break;
       case 'cancel-project': openDetail('先放下这次准备？','<p>已经练过的本领仍然保留。以后想重新做这件事，要从头准备。</p><button type="button" class="secondary-button" data-action="confirm-cancel-project">先放下，试试别的</button>'); break;
       case 'confirm-cancel-project': {finishChoice(cancelProject(game,game.revision)); break;}
       case 'restart': resetClock(); restartDialog.showModal(); break;
       case 'cancel-restart': restartDialog.close(); break;
-      case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
+      case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; reactionEventId = null; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
       case 'close-detail': detailDialog.close(); break;
     }
   } catch(error) {pause(); render(); toast(error.message || '这一步暂时没有完成，请再试一次。');}

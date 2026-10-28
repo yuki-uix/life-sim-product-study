@@ -1,7 +1,8 @@
 /** Fictional campus content. No engine, DOM, network or random generation. */
+import { getSocialOpening } from './campus-reactions.js?v=0.7.0';
 export const CONFIG = Object.freeze({
-  version: '0.6.0',
-  schemaVersion: 6,
+  version: '0.7.0',
+  schemaVersion: 7,
   totalDays: 91,
   title: '大学慢慢来',
   programYears: 4,
@@ -358,10 +359,11 @@ export const STORIES = Object.freeze([
     ],
     choices: [
       {
-        id: 'own_screen_lead', title: '自己排流程，带新同学一起布置',
-        description: '知道哪一步容易卡住，先把开场前的事分给几个人。',
+        id: 'own_screen_lead', title: '先拿钥匙去开门，带新同学布置',
+        description: '之前一起处理过现场，这回想先接住开门、试音和接人的事。',
         requiresPractice: { skillId: 'organize', styleId: 'curate', min: 12 },
-        result: '你把试音、挪椅子和门口指路分开安排，带新同学走了一遍。开场前仍忙乱了一阵，等片头亮起，才发现自己还没找座位。',
+        requiresCooperation: { personId: 'xiaoman', min: 1 },
+        result: '你拿上钥匙，先带两个新同学开门、试音，把门口接人和挪椅子的事分开。小满晚一点才来，片头亮起时，你还站在门边替迟到的人指空位。',
         flags: { ownScreenLed: true },
       },
       {
@@ -440,6 +442,7 @@ export const STORIES = Object.freeze([
     flags: Object.freeze(choice.flags),
     ...(choice.requiresSkill ? { requiresSkill: Object.freeze(choice.requiresSkill) } : {}),
     ...(choice.requiresPractice ? { requiresPractice: Object.freeze(choice.requiresPractice) } : {}),
+    ...(choice.requiresCooperation ? { requiresCooperation: Object.freeze(choice.requiresCooperation) } : {}),
     ...(choice.practiceChange ? { practiceChange: Object.freeze(choice.practiceChange) } : {}),
   }))),
 })));
@@ -449,10 +452,9 @@ export function getStoryPresentation(storyId, state = {}) {
   const story = STORIES.find(item => item.id === storyId);
   if (!story) return { title: '', paragraphs: [] };
   const paragraphs = [...story.paragraphs];
+  const socialOpening = getSocialOpening(storyId,state);
+  if (socialOpening) paragraphs.push(socialOpening);
   if (storyId === 'lights_out') {
-    if ((state.focusDays?.friends || 0) >= 10) {
-      paragraphs.push('这些天你和阿禾常一起吃饭，回宿舍也会聊几句。这会儿他把旁边的椅子往外拉了点：“你坐这儿？”');
-    }
     if ((state.focusDays?.easy || 0) >= 10) {
       paragraphs.push('最近课余没排太多事，你渐渐习惯一个人待一会儿。眼睛适应了黑暗，你听着门外的声音，倒也没急着跟出去。');
     }
