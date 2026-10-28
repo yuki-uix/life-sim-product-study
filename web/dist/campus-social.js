@@ -114,7 +114,7 @@ const ENCOUNTERS = Object.freeze({
 function previousReference(personId, actionId, previous) {
   if (!previous) return '';
   if (personId === 'ahe') return previous.actionId === 'chat'
-    ? '阿禾还记得你上回专门找他聊过近况，这次先问了一句后来怎么样。'
+    ? '阿禾还记得上回你们聊过的近况，这次先问了一句后来怎么样。'
     : '阿禾提起上回一起去食堂的事，又问这两天有没有碰见想吃的饭菜。';
   if (personId === 'xiaoman') return previous.actionId === 'chat'
     ? '小满接上你们上回聊过的片子，又问你后来有没有想起别的地方。'
@@ -139,7 +139,7 @@ export function buildSocialEvent(previous, personId, actionId, context = {}) {
     ? `${person.name}见到你先打了招呼，这回是在日常碰面之外，专门留一段时间待着。` : '';
   const sourceEventIds = [...new Set([...(context.sourceEventIds || []),...(prior ? [prior.id] : [])])];
   return {kind:'social',title:person[actionId],choiceTitle:person[actionId],text:scene.text,
-    personId,actionId,location:person.location,sourceEventIds,
+    personId,actionId,initiator:'player',location:person.location,sourceEventIds,
     reaction:{personId,variant:`${actionId}:${tier}:${history.length === 0 && (context.familiarityDays || 0) >= 14 ? 'known' : 'visits'}`,
       text:[warmOpening,reference,scene.reply].filter(Boolean).join(''),
       note:history.length ? '上回聊过、做过的事，这次又接了下去。' : '课表之外，开始有了主动找彼此的来往。',

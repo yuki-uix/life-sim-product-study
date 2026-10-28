@@ -1,11 +1,13 @@
 /** Campus calendar and history-shaped practice. Pure rules, without a clock or DOM. */
-import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.8.0';
-import { validateSave as validateV7, migrateLegacySave as migratePreV7 } from './calendar-engine-v7.js';
+import { CONFIG, PEOPLE, SKILLS, FOCUSES, CALENDAR_LOGS, STORIES, AFTER_LOGS, PROJECTS, CAPABILITIES, PRACTICES, weeklyText, practiceWeeklyText, dateInfo } from './calendar-content.js?v=0.9.0';
+import { validateSave as validateV8, migrateLegacySave as migratePreV8 } from './calendar-engine-v8.js';
 import { STORIES as V5_STORIES } from './calendar-content-v5.js';
 import { STORIES as V6_STORIES } from './calendar-content-v6.js';
 import { STORIES as V7_STORIES } from './calendar-content-v7.js';
-import { getSocialContext, getReaction, getReactionEcho } from './campus-reactions.js?v=0.8.0';
-import { socialOptionsFor, buildSocialEvent } from './campus-social.js?v=0.8.0';
+import { STORIES as V8_STORIES } from './calendar-content-v8.js';
+import { getSocialContext, getReaction, getReactionEcho } from './campus-reactions.js?v=0.9.0';
+import { socialOptionsFor, buildSocialEvent } from './campus-social.js?v=0.9.0';
+import { invitationCandidate, buildInvitationEncounter, buildInvitationDecline } from './campus-invitations.js?v=0.9.0';
 export { CONFIG };
 const FOCUS_IDS = FOCUSES.map(item => item.id);
 const SKILL_IDS = Object.keys(SKILLS);
@@ -13,6 +15,7 @@ const STORY_BY_ID = new Map(STORIES.map(item => [item.id, item]));
 const V5_STORY_BY_ID = new Map(V5_STORIES.map(item => [item.id, item]));
 const V6_STORY_BY_ID = new Map(V6_STORIES.map(item => [item.id, item]));
 const V7_STORY_BY_ID = new Map(V7_STORIES.map(item => [item.id, item]));
+const V8_STORY_BY_ID = new Map(V8_STORIES.map(item => [item.id, item]));
 const PROJECT_BY_ID = new Map(PROJECTS.map(item => [item.id, item]));
 const LOCATIONS = new Set(['gate', 'dorm', 'lake', 'club', 'hall']);
 const MAX_COMMANDS = 2048;
@@ -38,7 +41,7 @@ function initialState(runId) {
     weekFocusDays: Object.fromEntries(FOCUS_IDS.map(id => [id, 0])),
     skills: Object.fromEntries(SKILL_IDS.map(id => [id, 0])), peopleMet: ['ahe'], flags: {},
     events: [], favorites: [], pending: null, resolvedStories: [], commands: [],
-    project: null, completedProjects: [], socialDays: 0, weekSocialDays: 0, ...practiceState() };
+    project: null, completedProjects: [], socialDays: 0, weekSocialDays: 0, invitation: null, ...practiceState() };
   for (const entry of CALENDAR_LOGS.filter(item => item.day === 0)) appendEvent(state, {
     kind: entry.kind || 'calendar', title: '九月，开学了', text: entry.text, location: entry.location, contentId: entry.id });
   return state;
@@ -94,6 +97,31 @@ function openAvailableStory(state) {
   if (state.pending || state.phase === 'ended') return;
   const story = STORIES.find(item => canOpenStory(state, item));
   if (story) state.pending = { storyId: story.id };
+}
+function settleInvitation(state, allowOffer = false) {
+  const invitation = state.invitation;
+  if (invitation && (state.day > invitation.expiresDay || state.phase === 'ended')) {
+    appendEvent(state,{kind:'invitation_reply',outcome:'expired',title:'这次邀约没有排上',
+      text:`${PEOPLE[invitation.personId].name}之前提过的这次相处，后来没有定下来。你们各自照常过日常。`,
+      location:invitation.location,personId:invitation.personId,actionId:invitation.actionId,
+      sourceInvitationId:invitation.id,sourceEventIds:[invitation.id]});
+    state.invitation = null;
+  }
+  if (!allowOffer || state.invitation || state.pending || state.phase === 'ended') return;
+  const contexts = state.peopleMet.map(id=>({id,...getSocialContext(state,id)}));
+  const candidate = invitationCandidate(state,contexts,CONFIG.totalDays);
+  if (candidate) state.invitation = clone(appendEvent(state,{...candidate,kind:'invitation'}));
+}
+function invitationView(state) {
+  const invitation = state.invitation;
+  if (!invitation) return null;
+  const option = socialOptionsFor(state,invitation.personId,CONFIG.totalDays).find(item=>item.actionId===invitation.actionId);
+  const current = state.day <= invitation.expiresDay && state.phase !== 'ended';
+  const reason = !current ? '这次邀约已经过去了。' : option?.reason || '';
+  const nextAvailableDay = Number.isInteger(option?.nextAvailableDay) && option.nextAvailableDay <= invitation.expiresDay + 1
+    ? option.nextAvailableDay : null;
+  return {...clone(invitation),acceptEnabled:current&&!!option?.enabled,replyEnabled:current&&!state.pending,
+    reason,whenDay:state.day+1,nextAvailableDay};
 }
 function reduceFocus(previous, focusId) {
   if (!FOCUS_IDS.includes(focusId)) throw fail('unknown_focus', '没有这项生活安排。');
@@ -185,7 +213,7 @@ function weeklyRecord(state) {
     const activities = encounters.some(event => event.actionId === 'activity');
     const detail = chats && activities ? '有时只是聊几句，有时约着一起做点小事。'
       : chats ? '话题从眼前的小事接起，没聊完的就留到下次。' : '几段课余约着一起过，事情做到了哪儿，就先停在哪儿。';
-    appendEvent(state, {kind:'daily', contentId:'social_week', text:`这周有几次，课后去找了${names.join('、')}。${detail}`,
+    appendEvent(state, {kind:'daily', contentId:'social_week', text:`这周有几次，和${names.join('、')}一起过了段课余。${detail}`,
       location:encounters.at(-1)?.location || 'dorm', sourceEventIds:encounters.map(event => event.id)});
     state.weekFocusDays = Object.fromEntries(FOCUS_IDS.map(id=>[id,0])); state.weekPracticeInputs=[]; state.weekSocialDays=0;
     return;
@@ -231,6 +259,7 @@ function advanceOneDay(state, socialEvent = null) {
   if (!socialEvent) progressProject(state);
   openAvailableStory(state);
   if (state.day >= CONFIG.totalDays-1 && !state.pending) state.phase='ended';
+  settleInvitation(state,!socialEvent);
 }
 function reduceSocial(previous, personId, actionId, expectedRevision = previous.revision) {
   assertRevision(previous, expectedRevision);
@@ -243,8 +272,35 @@ function reduceSocial(previous, personId, actionId, expectedRevision = previous.
   if (!option.enabled) throw fail('social_unavailable', option.reason || '这次课余暂时约不上。');
   const event = buildSocialEvent(previous, personId, actionId, getSocialContext(previous, personId));
   const state = clone(previous);
+  if (state.invitation?.personId === personId) {
+    const invitation = state.invitation;
+    event.sourceInvitationId = invitation.id;
+    event.invitationOutcome = invitation.actionId === actionId ? 'accepted-by-plan' : 'met-otherwise';
+    event.sourceEventIds = [...new Set([...(event.sourceEventIds||[]),invitation.id])];
+    state.invitation = null;
+  }
   advanceOneDay(state, event);
   recordCommand(state, {type:'social', personId, actionId});
+  return state;
+}
+function reduceInvitationReply(previous, invitationId, reply, expectedRevision = previous.revision) {
+  assertRevision(previous,expectedRevision);
+  if (previous.phase === 'ended') throw fail('game_ended','这段秋季生活已经结束。');
+  if (previous.pending) throw fail('pending_story','先回应眼前的事，再回复这份邀约。');
+  const invitation = previous.invitation;
+  if (!invitation || invitation.id !== invitationId) throw fail('unknown_invitation','这份邀约已经不在眼前了。');
+  if (previous.day > invitation.expiresDay) throw fail('invitation_expired','这次邀约已经过去了。');
+  if (!['accept','decline'].includes(reply)) throw fail('unknown_invitation_reply','没有这种回应。');
+  const context = getSocialContext(previous,invitation.personId);
+  const state = clone(previous); state.invitation = null;
+  if (reply === 'accept') {
+    const view = invitationView(previous);
+    if (!view.acceptEnabled) throw fail('social_unavailable',view.reason || '这段课余暂时约不上。');
+    advanceOneDay(state,buildInvitationEncounter(previous,invitation,context));
+  } else {
+    appendEvent(state,buildInvitationDecline(previous,invitation,context));
+  }
+  recordCommand(state,{type:'invitation.reply',invitationId,reply});
   return state;
 }
 function reduceAdvance(previous,count) {
@@ -258,15 +314,15 @@ function practiceSignature(state) {
 }
 function reduceNextMoment(previous) {
   const state=clone(previous);if(state.pending||state.phase==='ended')return state;
-  const beforeSkills={...state.skills},beforeProjects=state.completedProjects.length,beforePractice=practiceSignature(state);
+  const beforeSkills={...state.skills},beforeProjects=state.completedProjects.length,beforePractice=practiceSignature(state),beforeInvitation=state.invitation?.id;
   for(let i=0;i<CONFIG.totalDays&&!state.pending&&state.phase==='living';i++) {
     advanceOneDay(state);
-    if(state.completedProjects.length!==beforeProjects||practiceSignature(state)!==beforePractice||SKILL_IDS.some(id=>beforeSkills[id]===0&&state.skills[id]>0))break;
+    if((state.invitation&&state.invitation.id!==beforeInvitation)||state.completedProjects.length!==beforeProjects||practiceSignature(state)!==beforePractice||SKILL_IDS.some(id=>beforeSkills[id]===0&&state.skills[id]>0))break;
   }
   recordCommand(state,{type:'moment'});return state;
 }
 function pendingStory(state) {
-  const catalogue = state.pending.legacy ? V5_STORY_BY_ID : state.pending.legacyVersion === 6 ? V6_STORY_BY_ID : state.pending.legacyVersion === 7 ? V7_STORY_BY_ID : STORY_BY_ID;
+  const catalogue = state.pending.legacy ? V5_STORY_BY_ID : state.pending.legacyVersion === 6 ? V6_STORY_BY_ID : state.pending.legacyVersion === 7 ? V7_STORY_BY_ID : state.pending.legacyVersion === 8 ? V8_STORY_BY_ID : STORY_BY_ID;
   return catalogue.get(state.pending.storyId);
 }
 function choicesFor(state) {
@@ -314,6 +370,7 @@ function reduceChoice(previous,choiceId,expectedRevision=previous.revision) {
   if(practiceChange)setPlan(state,practiceChange.skillId,practiceChange.styleId,event.id);
   state.resolvedStories.push(story.id);state.pending=null;openAvailableStory(state);
   if(state.day>=CONFIG.totalDays-1&&!state.pending)state.phase='ended';
+  settleInvitation(state);
   recordCommand(state,{type:'choice',choiceId});return state;
 }
 function checkedState(value){const checked=validateSave(value);if(!checked.valid)throw fail('invalid_save',checked.error);return checked.state;}
@@ -325,6 +382,8 @@ export function getChoices(state){return choicesFor(checkedState(state));}
 export function getProjects(state){return projectOptions(checkedState(state));}
 export function getSocialOptions(state,personId){return clone(socialOptionsFor(checkedState(state),personId,CONFIG.totalDays));}
 export function socialize(state,personId,actionId,revision=state?.revision){return reduceSocial(checkedState(state),personId,actionId,revision);}
+export function getInvitation(state){return invitationView(checkedState(state));}
+export function replyToInvitation(state,invitationId,reply,revision=state?.revision){return reduceInvitationReply(checkedState(state),invitationId,reply,revision);}
 export function getRelationships(candidate){
   const state=checkedState(candidate);
   return state.peopleMet.map(personId=>({id:personId,...clone(getSocialContext(state,personId))}));
@@ -354,7 +413,7 @@ export function getGrowth(candidate){
   });
 }
 function isJsonValue(value,ancestors=new Set(),depth=0){
-  if(depth>40)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+  if(depth>48)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;
   if(typeof value==='number')return Number.isFinite(value);if(typeof value!=='object'||ancestors.has(value))return false;
   const prototype=Object.getPrototypeOf(value);if(!Array.isArray(value)&&prototype!==Object.prototype&&prototype!==null)return false;
   ancestors.add(value);const valid=Object.values(value).every(item=>isJsonValue(item,ancestors,depth+1));ancestors.delete(value);return valid;
@@ -365,11 +424,11 @@ function equalJson(a,b){
 }
 function validSnapshot(event){return typeof event.text==='string'&&event.text.trim().length>0&&event.text.length<=2500&&(event.title===undefined||(typeof event.title==='string'&&event.title.trim().length>0&&event.title.length<=200));}
 function importLegacy(snapshot){
-  const verified=validateV7(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
+  const verified=validateV8(snapshot);if(!verified.valid)throw fail('invalid_legacy',verified.error);
   const old=verified.state;
   return{...clone(old),schemaVersion:CONFIG.schemaVersion,rulesVersion:CONFIG.version,
-    socialDays:0,weekSocialDays:0,
-    pending:old.pending?{...clone(old.pending),...(!old.pending.legacy&&!old.pending.legacyVersion?{legacyVersion:7}:{})}:null,
+    invitation:null,
+    pending:old.pending?{...clone(old.pending),...(!old.pending.legacy&&!old.pending.legacyVersion?{legacyVersion:8}:{})}:null,
     commands:[{type:'legacy.import',snapshot:clone(old)}]};
 }
 /** Verify actual rules and choices by replay; this is not an anti-cheat identity boundary. */
@@ -397,6 +456,7 @@ export function validateSave(candidate){
       else if(command.type==='project.cancel')canonical=reduceCancelProject(canonical);
       else if(command.type==='moment')canonical=reduceNextMoment(canonical);
       else if(command.type==='social')canonical=reduceSocial(canonical,command.personId,command.actionId);
+      else if(command.type==='invitation.reply')canonical=reduceInvitationReply(canonical,command.invitationId,command.reply);
       else return invalid('这份记录包含未知操作。');
       if(canonical.revision!==revision+1)return invalid('这份记录包含重复或过时操作。');
     }
@@ -415,12 +475,12 @@ export function getSummary(candidate){
   const state=checkedState(candidate);return{daysElapsed:state.day,focusDays:{...state.focusDays},skills:{...state.skills},
     skillStages:Object.fromEntries(SKILL_IDS.map(id=>[id,SKILLS[id].stages[state.skills[id]]])),peopleMet:[...state.peopleMet],events:clone(state.events),
     favorites:state.favorites.map(id=>clone(state.events.find(event=>event.id===id))),storiesCompleted:state.resolvedStories.length,phase:state.phase,
-    project:clone(state.project),completedProjects:clone(state.completedProjects),practiceDays:clone(state.practiceDays),practicePlans:clone(state.practicePlans),socialDays:state.socialDays};
+    project:clone(state.project),completedProjects:clone(state.completedProjects),practiceDays:clone(state.practiceDays),practicePlans:clone(state.practicePlans),socialDays:state.socialDays,invitation:clone(state.invitation)};
 }
 export function migrateLegacySave(candidate){
   try{
     const value=typeof candidate==='string'?JSON.parse(candidate):candidate;
-    const legacy=value?.schemaVersion===7?validateV7(value):migratePreV7(value);
+    const legacy=value?.schemaVersion===8?validateV8(value):migratePreV8(value);
     if(!legacy.valid)return{valid:false,state:null,error:legacy.error};
     return validateSave(importLegacy(legacy.state));
   }catch{return{valid:false,state:null,error:'这份旧记录暂时无法接续，原记录不会被覆盖。'};}

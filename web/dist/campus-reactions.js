@@ -1,5 +1,5 @@
 /** Authored social responses, selected from facts that existed before a choice. */
-import { socialHistory } from './campus-social.js?v=0.8.0';
+import { socialHistory } from './campus-social.js?v=0.9.0';
 export const CHARACTER_NOTES = Object.freeze({
   xiaoman: '小满手头忙时说话很快，分工前会先确认对方有没有接触过现场。',
   linye: '林野喜欢边走边拍，不太习惯对着镜头说话；留下哪些事，他想自己决定。',
@@ -96,7 +96,7 @@ export function getSocialContext(state = {}, personId) {
       : stage === 'continuing' ? activityCount >= 2
         ? '见面能接上前一次的话，试设备时也有了实际搭手的经历。'
         : '已经会专门留空聊聊，能接上旧话；现场分工还要在实际搭手中摸清。'
-        : activityCount ? '已经主动约着试过设备，彼此怎样搭手还在慢慢了解。' : '开始专门找她聊片子，课余的来往渐渐多了起来。';
+        : activityCount ? '已经约着试过设备，彼此怎样搭手还在慢慢了解。' : '开始专门找她聊片子，课余的来往渐渐多了起来。';
     if (personId === 'linye') summary = stage === 'familiar'
       ? chatCount && activityCount ? '一起沿湖走过，也聊过日常，能听懂彼此想说什么；想留下哪些画面仍会互相确认。'
         : activityCount ? '约过几回沿湖走和拍照，慢慢听得懂彼此想拍什么；想留下哪些画面仍会互相确认。'

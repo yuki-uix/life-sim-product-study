@@ -1,13 +1,14 @@
-import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject, getRelationships, getSocialOptions, socialize } from './calendar-engine.js?v=0.8.0';
-import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.8.0';
+import { createGame, setFocus, advanceDays, getChoices, choose, toggleFavorite, validateSave, getSummary, getGrowth, getProjects, startProject, advanceToNextMoment, migrateLegacySave, setPractice, cancelProject, getRelationships, getSocialOptions, socialize, getInvitation, replyToInvitation } from './calendar-engine.js?v=0.9.0';
+import { CONFIG, FOCUSES, PEOPLE, SKILLS, STORIES, PROJECTS, dateInfo, getStoryPresentation } from './calendar-content.js?v=0.9.0';
 import { campusScene, avatar } from './campus-art.js';
 import { getStoryPresentation as getLegacyStoryPresentation } from './calendar-content-v5.js';
 import { getStoryPresentation as getV6StoryPresentation } from './calendar-content-v6.js';
 import { getStoryPresentation as getV7StoryPresentation } from './calendar-content-v7.js';
-import { CHARACTER_NOTES } from './campus-reactions.js?v=0.8.0';
+import { getStoryPresentation as getV8StoryPresentation } from './calendar-content-v8.js';
+import { CHARACTER_NOTES } from './campus-reactions.js?v=0.9.0';
 
-const STORAGE_KEY = 'campus-slowly.save.v8';
-const LEGACY_KEYS = ['campus-slowly.save.v7','campus-slowly.save.v6','campus-slowly.save.v5','campus-slowly.save.v4'];
+const STORAGE_KEY = 'campus-slowly.save.v9';
+const LEGACY_KEYS = ['campus-slowly.save.v8','campus-slowly.save.v7','campus-slowly.save.v6','campus-slowly.save.v5','campus-slowly.save.v4'];
 const main = document.querySelector('#main');
 const restartDialog = document.querySelector('#restart-dialog');
 const detailDialog = document.querySelector('#detail-dialog');
@@ -16,7 +17,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&'
 const e = escapeHTML;
 let game, running = false, speed = 1, started = false, invalidSave = false, saveError = false;
 let accumulated = 0, lastTick = performance.now(), focusOpen = false, logFilter = 'all';
-let unseen = 0, toastTimer, growthOpen = false, reactionEventId = null;
+let unseen = 0, toastTimer, growthOpen = false, reactionEventId = null, deferredInvitationId = null;
 
 function load() {
   try {
@@ -27,6 +28,7 @@ function load() {
       const checked = raw ? validateSave(saved.game) : migrateLegacySave(saved.game);
       if (!checked.valid) { invalidSave = true; game = createGame(); return; }
       game = checked.state; started = Boolean(saved.started);
+      deferredInvitationId = typeof saved.deferredInvitationId === 'string' && saved.deferredInvitationId === game.invitation?.id ? saved.deferredInvitationId : null;
       if (legacy) persist();
       return;
     }
@@ -35,7 +37,7 @@ function load() {
 }
 function persist() {
   if (invalidSave) return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({game, started})); saveError = false; }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({game, started, deferredInvitationId})); saveError = false; }
   catch { saveError = true; }
 }
 function toast(text) {
@@ -63,10 +65,11 @@ function finishChoice(next, {latest = true} = {}) {
   }
 }
 function dateLabel(day) { return dateInfo(day).label; }
-function calendar() {
+function calendar(invitation) {
   const date = dateInfo(game.day);
   const status = game.phase === 'ended' ? '这一段走到了十一月底' : game.pending ? '有件事，需要你决定' : running ? '日子在往前走' : started ? '时间已暂停' : '从开学的九月开始';
-  return `<section class="calendar" aria-label="校园日历"><div class="calendar-heading"><div><p class="eyebrow">南棠大学 · 大一 · 秋季</p><h1><span>${e(date.monthLabel)}</span> <b>${date.day}</b><small>日</small></h1></div><div class="calendar-status"><span class="clock-dot ${running ? 'running' : ''}" aria-hidden="true"></span>${e(status)}<small>第 ${date.week} 周 / 九月至十一月试玩</small></div></div><div class="month-track" role="progressbar" aria-label="秋季时间进度" aria-valuemin="0" aria-valuemax="90" aria-valuenow="${game.day}" aria-valuetext="${e(date.label)}"><span style="width:${game.day / 90 * 100}%"></span><i></i><i></i></div><div class="month-labels"><span class="${date.month === 9 ? 'current' : ''}">九月 · 刚开学</span><span class="${date.month === 10 ? 'current' : ''}">十月 · 渐渐熟悉</span><span class="${date.month === 11 ? 'current' : ''}">十一月 · 天凉了</span></div><div class="time-controls"><button class="primary-button" type="button" data-action="play" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>${running ? 'Ⅱ 暂停' : started ? '▷ 继续生活' : '▷ 开始这段生活'}</button><div class="speeds" aria-label="时间速度">${[1,2,4].map(value => `<button type="button" data-speed="${value}" aria-pressed="${speed === value}" ${game.phase === 'ended' ? 'disabled' : ''}>${value}×</button>`).join('')}</div><button class="text-button fast-forward" type="button" data-action="forward" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>到下一次变化 ››</button></div></section>`;
+  const mailButton = invitation ? `<button type="button" class="text-button invitation-button" data-action="view-invitation">${e(PEOPLE[invitation.personId].name)}来找你了 · 看看 ›</button>` : '';
+  return `<section class="calendar" aria-label="校园日历"><div class="calendar-heading"><div><p class="eyebrow">南棠大学 · 大一 · 秋季</p><h1><span>${e(date.monthLabel)}</span> <b>${date.day}</b><small>日</small></h1></div><div class="calendar-status"><span class="clock-dot ${running ? 'running' : ''}" aria-hidden="true"></span>${e(status)}<small>第 ${date.week} 周 / 九月至十一月试玩</small></div></div><div class="month-track" role="progressbar" aria-label="秋季时间进度" aria-valuemin="0" aria-valuemax="90" aria-valuenow="${game.day}" aria-valuetext="${e(date.label)}"><span style="width:${game.day / 90 * 100}%"></span><i></i><i></i></div><div class="month-labels"><span class="${date.month === 9 ? 'current' : ''}">九月 · 刚开学</span><span class="${date.month === 10 ? 'current' : ''}">十月 · 渐渐熟悉</span><span class="${date.month === 11 ? 'current' : ''}">十一月 · 天凉了</span></div><div class="time-controls"><button class="primary-button" type="button" data-action="play" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>${running ? 'Ⅱ 暂停' : started ? '▷ 继续生活' : '▷ 开始这段生活'}</button><div class="speeds" aria-label="时间速度">${[1,2,4].map(value => `<button type="button" data-speed="${value}" aria-pressed="${speed === value}" ${game.phase === 'ended' ? 'disabled' : ''}>${value}×</button>`).join('')}</div><button class="text-button fast-forward" type="button" data-action="forward" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>到下一次变化 ››</button>${mailButton}</div></section>`;
 }
 function focusPanel() {
   const focus = focusItem();
@@ -109,20 +112,57 @@ function chooseFirstWeek() {
   ];
   openDetail('开学这周，课余想怎么过？', `<p>先试一种日常，之后随时可以调整。</p><div class="planning-options">${options.map(option => `<button type="button" class="story-choice" data-start-focus="${option.id}"><span>›</span><span><strong>${e(option.title)}</strong><small>${e(option.description)}</small></span></button>`).join('')}</div>`);
 }
-function peoplePanel() {
+function syncClockOffset() {
+  const height = document.querySelector('.calendar')?.getBoundingClientRect().height;
+  if (height) main.style.setProperty('--clock-offset', `${Math.ceil(height) + 16}px`);
+}
+function viewInvitation() {
+  const invitation = getInvitation(game);
+  if (!invitation) return;
+  deferredInvitationId = null;
+  persist(); render();
+  openDetail(invitation.title, invitationDetails(invitation));
+}
+function invitationStatus(offer) {
+  const reply = game.events.find(event => event.sourceInvitationId === offer.id);
+  if (reply?.kind === 'social') return reply.invitationOutcome === 'met-otherwise' ? '后来另约了一件事' : '后来一起排上了这段课余';
+  if (reply?.outcome === 'declined') return '这回先各自忙';
+  if (reply?.outcome === 'expired') return '这次没排上，各自照常过日常';
+  return game.invitation?.id === offer.id ? '有空可以回这份邀请' : '这次来找过你';
+}
+function invitationPanel(invitation) {
+  if (!invitation) return '';
+  const name = PEOPLE[invitation.personId].name;
+  const deferred = deferredInvitationId === invitation.id;
+  if (deferred) return `<section class="invitation-panel invitation-folded" aria-label="${e(name)}的邀请"><span>${avatar(invitation.personId)}<b>${e(name)}来找你了</b></span><button type="button" class="text-button" data-action="view-invitation">空下来再看看 ›</button></section>`;
+  const preview = invitation.text.length > 70 ? `${invitation.text.slice(0,70)}…` : invitation.text;
+  return `<section class="invitation-panel" aria-label="${e(name)}的邀请"><p class="eyebrow">${e(dateLabel(invitation.day))} · 对方来找你</p><div class="invitation-person">${avatar(invitation.personId)}<span>${e(name)}</span></div><h2>${e(invitation.title)}</h2><p class="invitation-copy">${e(preview)}</p><div class="invitation-actions"><button type="button" class="secondary-button" data-action="view-invitation">读读这份邀请 ›</button><button type="button" class="text-button" data-defer-invitation="${e(invitation.id)}">晚点再看</button></div></section>`;
+}
+function invitationDetails(invitation) {
+  const name = PEOPLE[invitation.personId].name;
+  const source = game.events.slice().reverse().find(event => invitation.sourceEventIds?.includes(event.id));
+  const nextDate = !invitation.acceptEnabled && Number.isInteger(invitation.nextAvailableDay) ? `下次可约：${dateLabel(invitation.nextAvailableDay)}。` : '';
+  return `<div class="invitation-person">${avatar(invitation.personId)}<span>${e(dateLabel(invitation.day))} · ${e(name)}来找你</span></div><p class="invitation-copy">${e(invitation.text)}</p><p class="invitation-window">这几天有空再回，${e(dateLabel(invitation.expiresDay))}之前都可以商量。</p>${source ? `<button type="button" class="text-button invitation-origin" data-origin="${e(source.id)}">翻回那次相处 ›</button>` : ''}<div class="invitation-actions"><button type="button" class="secondary-button" data-invitation-id="${e(invitation.id)}" data-invitation-reply="accept" data-invitation-revision="${game.revision}" ${!invitation.acceptEnabled || invalidSave ? 'disabled aria-describedby="invitation-reason"' : ''}>用${e(dateLabel(invitation.whenDay))}这段课余一起 ›</button><button type="button" class="text-button" data-invitation-id="${e(invitation.id)}" data-invitation-reply="decline" data-invitation-revision="${game.revision}" ${game.pending || game.phase === 'ended' || invalidSave ? 'disabled' : ''}>这回先各自忙</button><button type="button" class="text-button" data-defer-invitation="${e(invitation.id)}">晚点再看</button></div>${!invitation.acceptEnabled ? `<p class="social-reason" id="invitation-reason">${e(invitation.reason)} ${e(nextDate)}</p>` : '<p class="invitation-cost">一起度过一天课余，原来的日常安排之后照常继续。</p>'}`;
+}
+function invitationHistory(personId) {
+  const offers = game.events.filter(event => event.kind === 'invitation' && event.personId === personId).slice(-3).reverse();
+  if (!offers.length) return '';
+  return `<section class="person-visits"><h3>对方也来找过你</h3>${offers.map(offer => `<article class="person-visit"><p class="eyebrow">${e(dateLabel(offer.day))} · ${e(invitationStatus(offer))}</p><strong>${e(offer.title)}</strong><p>${e(offer.text)}</p>${game.invitation?.id === offer.id ? '<button type="button" class="text-button" data-action="view-invitation">看看这份邀请 ›</button>' : ''}</article>`).join('')}</section>`;
+}
+function peoplePanel(invitation) {
   return `<section class="people-panel"><h2>想找谁？</h2><p class="people-hint">点头像，聊聊或约一段课余。</p><div class="people-list">${game.peopleMet.map(id => {
     const options = getSocialOptions(game,id);
     const available = options.some(option => option.enabled);
     const nextDays = options.map(option => option.nextAvailableDay).filter(Number.isInteger);
     const nextDay = nextDays.length ? Math.min(...nextDays) : null;
-    const hint = game.phase === 'ended' ? '回看相处' : game.pending ? '先处理眼前的事' : available ? '聊聊 / 约一下 ›' : nextDay !== null ? `${dateLabel(nextDay)}可约` : '这阵子先各自忙';
+    const hint = invitation?.personId === id ? '对方来找你了 ›' : game.phase === 'ended' ? '回看相处' : game.pending ? '先处理眼前的事' : available ? '聊聊 / 约一下 ›' : nextDay !== null ? `${dateLabel(nextDay)}可约` : '这阵子先各自忙';
     return `<button type="button" data-person="${id}" class="person-button" aria-label="找${e(PEOPLE[id].name)}聊天或约活动">${avatar(id)}<span>${e(PEOPLE[id].name)}<small>${e(PEOPLE[id].role)}</small><small class="person-invite-hint">${e(hint)}</small></span></button>`;
   }).join('')}</div><button type="button" class="text-button growth-link" data-action="growth">看看最近的自己 ›</button></section>`;
 }
 function storyPanel() {
   if (!game.pending) return '';
   const story = STORIES.find(item => item.id === game.pending.storyId);
-  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : game.pending.legacyVersion === 6 ? getV6StoryPresentation(story.id, game) : game.pending.legacyVersion === 7 ? getV7StoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
+  const presentation = game.pending.legacy ? getLegacyStoryPresentation(story.id, game) : game.pending.legacyVersion === 6 ? getV6StoryPresentation(story.id, game) : game.pending.legacyVersion === 7 ? getV7StoryPresentation(story.id, game) : game.pending.legacyVersion === 8 ? getV8StoryPresentation(story.id, game) : getStoryPresentation(story.id, game);
   return `<section class="story-panel" aria-labelledby="story-title"><p class="eyebrow">${e(dateLabel(game.day))} · ${e(story.personId ? PEOPLE[story.personId].name : '校园里')} · 时间暂停中</p><h2 id="story-title" tabindex="-1">${e(presentation.title)}</h2><div class="story-text">${presentation.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}</div><div class="story-choices">${getChoices(game).map((choice,index) => `<button type="button" data-choice="${choice.id}" class="story-choice" ${!choice.enabled ? 'disabled' : ''}><span class="choice-number">${index+1}</span><span><strong>${e(choice.title)}</strong><small>${e(choice.description)}</small>${choice.practiceHint ? `<small class="practice-hint">${e(choice.practiceHint)}</small>` : ''}${!choice.enabled ? `<small class="choice-reason">${e(choice.reason)}</small>` : ''}</span><span aria-hidden="true">›</span></button>`).join('')}</div></section>`;
 }
 function reactionPanel() {
@@ -137,9 +177,14 @@ function reactionHTML(reaction) {
   if (!reaction) return '';
   return `<div class="log-reaction" aria-label="${e(PEOPLE[reaction.personId].name)}的回应"><strong>${e(PEOPLE[reaction.personId].name)}</strong><p>${e(reaction.text)}</p></div>`;
 }
+function entryType(event) {
+  if (event.kind === 'story') return '那天的事';
+  if (event.kind === 'social') return event.initiator === 'npc' ? '对方约你一起' : '主动相处';
+  return {invitation:'对方来找你',invitation_reply:'邀请的后话',meeting:'认识了一个人',project:'慢慢做的一件事',direction:'换了一种做法'}[event.kind] || '';
+}
 function entryHTML(event) {
   const starred = game.favorites.includes(event.id);
-  return `<article class="log-entry ${event.kind === 'story' || event.kind === 'social' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${event.kind === 'story' ? '那天的事' : event.kind === 'social' ? '主动相处' : event.kind === 'meeting' ? '认识了一个人' : event.kind === 'project' ? '慢慢做的一件事' : event.kind === 'direction' ? '换了一种做法' : ''}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p>${reactionHTML(event.reaction)}</div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
+  return `<article class="log-entry ${event.kind === 'story' || event.kind === 'social' ? 'story-entry' : ''}" data-event="${e(event.id)}"><div class="log-date"><time>${e(dateLabel(event.day))}</time><span>${e(entryType(event))}</span></div><div class="log-copy">${event.title ? `<h3>${e(event.title)}</h3>` : ''}<p>${e(event.text)}</p>${reactionHTML(event.reaction)}${event.kind === 'invitation' ? `<p class="invitation-log-status">${e(invitationStatus(event))}</p>` : ''}</div><button type="button" class="star-button" data-star="${e(event.id)}" aria-label="${starred ? '取消收藏' : '收藏'}${e(dateLabel(event.day))}的这条记录" aria-pressed="${starred}" title="${starred ? '取消收藏' : '放进收藏'}">${starred ? '★' : '☆'}</button></article>`;
 }
 function diary() {
   const entries = (logFilter === 'favorites' ? game.events.filter(event => game.favorites.includes(event.id)) : game.events).slice().reverse();
@@ -150,6 +195,7 @@ function endingPanel() {
   return `<section class="ending-panel"><p class="eyebrow">十一月底</p><h2>转眼，入学已经三个月了。</h2><p>天冷下来，回宿舍的路也熟了。后面的日子还长，这段试玩先停在这里。</p><div class="ending-actions"><button type="button" class="secondary-button" data-action="growth">看看这三个月</button><button type="button" class="text-button" data-action="restart">换一种过法 ↗</button></div></section>`;
 }
 function render({newStory = false, latest = false} = {}) {
+  const invitation = getInvitation(game);
   const oldLog = document.querySelector('#log-scroll');
   const nearTop = !oldLog || oldLog.scrollTop < 35;
   const oldRect = oldLog?.getBoundingClientRect();
@@ -159,12 +205,13 @@ function render({newStory = false, latest = false} = {}) {
   const focused = document.activeElement;
   let focusKey;
   const focusAnchor = focused?.id === 'log-scroll' ? 'log-scroll' : focused?.matches?.('#focus-settings > summary') ? 'focus-summary' : focused?.matches?.('#growth-details > summary') ? 'growth-summary' : null;
-  if (main.contains(focused)) for (const key of ['action','focus','choice','speed','filter','star','person','project','resumeProject','planProject','practiceSkill','origin']) if (focused.dataset?.[key]) {focusKey = [key,focused.dataset[key]]; break;}
+  if (main.contains(focused)) for (const key of ['invitationReply','deferInvitation','action','focus','choice','speed','filter','star','person','project','resumeProject','planProject','practiceSkill','origin']) if (focused.dataset?.[key]) {focusKey = [key,focused.dataset[key]]; break;}
   const growthDetails = document.querySelector('#growth-details');
   if (growthDetails) growthOpen = growthDetails.open;
   const details = document.querySelector('#focus-settings');
   if (details) focusOpen = details.open;
-  main.innerHTML = `${invalidSave ? '<div class="save-warning">这份记录暂时无法读取，原记录已保留。<button type="button" data-action="restart" class="text-button">重新开始这一段</button></div>' : ''}${calendar()}<div class="campus-layout"><aside class="campus-sidebar">${focusPanel()}${growthPanel()}<div class="quiet-scene" aria-hidden="true">${campusScene(focusItem().location, 'autumn')}</div>${peoplePanel()}</aside><div class="life-column">${!started ? '<p class="opening-note">开学了。课表之外的时间，先按自己喜欢的方式过。</p>' : ''}${reactionPanel()}${storyPanel()}${endingPanel()}${diary()}</div></div>`;
+  main.innerHTML = `${invalidSave ? '<div class="save-warning">这份记录暂时无法读取，原记录已保留。<button type="button" data-action="restart" class="text-button">重新开始这一段</button></div>' : ''}${calendar(invitation)}<div class="campus-layout"><aside class="campus-sidebar">${focusPanel()}${growthPanel()}<div class="quiet-scene" aria-hidden="true">${campusScene(focusItem().location, 'autumn')}</div>${peoplePanel(invitation)}</aside><div class="life-column">${!started ? '<p class="opening-note">开学了。课表之外的时间，先按自己喜欢的方式过。</p>' : ''}${invitationPanel(invitation)}${reactionPanel()}${storyPanel()}${endingPanel()}${diary()}</div></div>`;
+  syncClockOffset();
   const log = document.querySelector('#log-scroll');
   if (latest || nearTop) {log.scrollTop = 0; unseen = 0; document.querySelector('.new-records')?.remove();}
   else {
@@ -185,19 +232,22 @@ function render({newStory = false, latest = false} = {}) {
 function update(next, {latest = false} = {}) {
   const oldLength = game.events.length;
   const newStory = !game.pending && next.pending;
+  const newInvitation = next.invitation && next.invitation.id !== game.invitation?.id ? next.invitation : null;
   const scroll = document.querySelector('#log-scroll');
   const readingEarlier = scroll && scroll.scrollTop >= 35;
   game = next;
   if (readingEarlier) unseen += Math.max(0,game.events.length-oldLength);
   persist(); render({newStory:Boolean(newStory), latest});
+  if (newInvitation && !readingEarlier) toast(`${PEOPLE[newInvitation.personId].name}来找你了，邀请在日历旁，有空可以看看。`);
 }
 function advance(count) {
   const next = advanceDays(game,count);
   const newAbility = growthSignature(next) !== growthSignature(game);
   const projectDone = next.completedProjects.length > game.completedProjects.length;
+  const newInvitation = next.invitation && next.invitation.id !== game.invitation?.id;
   if (next.pending || next.phase === 'ended') pause();
   update(next);
-  if ((newAbility || projectDone) && !next.pending) toast(projectDone ? '手边的准备做完了，记在了今天。' : '有了新的做法，有空可以看看最近的自己。');
+  if ((newAbility || projectDone) && !next.pending && !newInvitation) toast(projectDone ? '手边的准备做完了，记在了今天。' : '有了新的做法，有空可以看看最近的自己。');
 }
 function openDetail(title, content) {
   // The open dialog freezes the timer without changing the player's run/pause intent.
@@ -233,7 +283,7 @@ function showPerson(id) {
     const reasonId = `social-${id}-${option.actionId}-reason`;
     const nextDate = !option.enabled && Number.isInteger(option.nextAvailableDay) ? `下次可约：${dateLabel(option.nextAvailableDay)}。` : '';
     return `<div class="social-option"><button type="button" class="social-choice" data-social-person="${id}" data-social-action="${e(option.actionId)}" data-social-revision="${game.revision}" ${!option.enabled || invalidSave ? `disabled aria-describedby="${reasonId}"` : ''}><strong>${e(option.title)}</strong><small>${e(option.description)}</small><span>${option.enabled && !invalidSave ? '用这段课余，找对方一起 ›' : '这次先不安排'}</span></button>${!option.enabled || invalidSave ? `<p id="${reasonId}" class="social-reason">${e(invalidSave ? '先处理这份记录的问题。' : option.reason)}${nextDate ? ` ${e(nextDate)}` : ''}</p>` : ''}</div>`;
-  }).join('')}</div></section>${relationship ? `<p class="person-note">${e(relationship.summary)}</p>` : ''}<details class="person-about"><summary>关于${e(PEOPLE[id].name)}</summary><p>${e(note)}</p><p>${e(CHARACTER_NOTES[id] || '')}</p></details>${interactions.length ? `<h3>最近的相处</h3>${interactions.map(event => `<article class="person-memory"><p class="eyebrow">${e(dateLabel(event.day))} · ${e(event.title)}</p><p class="person-memory-action">${e(event.text)}</p>${reactionHTML(event.reaction)}</article>`).join('')}` : '<p class="detail-footnote">以后一起聊过、做过的事，会留在这里。</p>'}`);
+  }).join('')}</div></section>${relationship ? `<p class="person-note">${e(relationship.summary)}</p>` : ''}${invitationHistory(id)}<details class="person-about"><summary>关于${e(PEOPLE[id].name)}</summary><p>${e(note)}</p><p>${e(CHARACTER_NOTES[id] || '')}</p></details>${interactions.length ? `<h3>最近的相处</h3>${interactions.map(event => `<article class="person-memory"><p class="eyebrow">${e(dateLabel(event.day))} · ${e(event.title)}</p><p class="person-memory-action">${e(event.text)}</p>${reactionHTML(event.reaction)}</article>`).join('')}` : '<p class="detail-footnote">以后一起聊过、做过的事，会留在这里。</p>'}`);
 }
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
@@ -244,6 +294,8 @@ document.addEventListener('click', event => {
     if (button.dataset.speed) {speed = Number(button.dataset.speed); accumulated = 0; render(); return;}
     if (button.dataset.choice) {logFilter = 'all'; unseen = 0; finishChoice(choose(game,button.dataset.choice,game.revision)); if(!game.pending && !reactionEventId) document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); return;}
     if (button.dataset.star) {update(toggleFavorite(game,button.dataset.star)); return;}
+    if (button.dataset.invitationReply && button.dataset.invitationId) {logFilter = 'all'; unseen = 0; const next = replyToInvitation(game,button.dataset.invitationId,button.dataset.invitationReply,Number(button.dataset.invitationRevision)); deferredInvitationId = null; finishChoice(next); return;}
+    if (button.dataset.deferInvitation && button.dataset.deferInvitation === game.invitation?.id) {deferredInvitationId = button.dataset.deferInvitation; if (detailDialog.open) detailDialog.close(); persist(); render(); return;}
     if (button.dataset.socialAction && button.dataset.socialPerson) {logFilter = 'all'; unseen = 0; finishChoice(socialize(game,button.dataset.socialPerson,button.dataset.socialAction,Number(button.dataset.socialRevision))); return;}
     if (button.dataset.person) {showPerson(button.dataset.person); return;}
     if (button.dataset.planProject) {planProject(button.dataset.planProject); return;}
@@ -260,6 +312,7 @@ document.addEventListener('click', event => {
         // Preserve the chance to act when a skill or preparation changes.
         const next = advanceToNextMoment(game); logFilter = 'all'; unseen = 0; update(next,{latest:true}); break;
       }
+      case 'view-invitation': viewInvitation(); break;
       case 'latest': logFilter = 'all'; unseen = 0; render({latest:true}); break;
       case 'close-reaction': reactionEventId = null; render(); document.querySelector('.diary')?.scrollIntoView({block:'start',behavior:'smooth'}); break;
       case 'growth': showGrowth(); break;
@@ -267,7 +320,7 @@ document.addEventListener('click', event => {
       case 'confirm-cancel-project': {finishChoice(cancelProject(game,game.revision)); break;}
       case 'restart': resetClock(); restartDialog.showModal(); break;
       case 'cancel-restart': restartDialog.close(); break;
-      case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; reactionEventId = null; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
+      case 'confirm-restart': pause(); game = createGame(); started = false; invalidSave = false; focusOpen = false; growthOpen = false; reactionEventId = null; deferredInvitationId = null; logFilter = 'all'; unseen = 0; restartDialog.close(); persist(); render({latest:true}); break;
       case 'close-detail': detailDialog.close(); break;
     }
   } catch(error) {pause(); render(); toast(error.message || '这一步暂时没有完成，请再试一次。');}
@@ -286,4 +339,5 @@ setInterval(() => {
   accumulated += elapsed * speed;
   if (accumulated >= DAY_MS) {accumulated -= DAY_MS; try {advance(1);} catch(error){pause();render();toast(error.message);}}
 },100);
+window.addEventListener('resize', syncClockOffset);
 load(); render({latest:true});

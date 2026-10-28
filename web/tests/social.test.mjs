@@ -288,7 +288,7 @@ test('v0.7 migration keeps previous reactions, active work and pending choices w
     assert.equal(result.valid, true);
     const state = result.state;
     for (const key of ['runId','day','revision','phase','focus','focusDays','weekFocusDays','skills','peopleMet','flags','events','favorites','resolvedStories','practiceDays','practicePlans','weekPracticeInputs','project','completedProjects']) assert.deepEqual(state[key], old[key], key);
-    assert.equal(state.schemaVersion, 8); assert.equal(state.socialDays, 0); assert.equal(state.weekSocialDays, 0);
+    assert.equal(state.schemaVersion, 9); assert.equal(state.socialDays, 0); assert.equal(state.weekSocialDays, 0);
     assert.equal(socialEvents(state).length, 0);
     if (old.pending) {
       assert.equal(state.pending.legacyVersion, 7);

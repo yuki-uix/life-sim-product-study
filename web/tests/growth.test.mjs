@@ -203,7 +203,7 @@ test('verified v0.4 snapshots migrate with dates, skills, choices, text and favo
     const original = copy(old);
     const migrated = engine.migrateLegacySave(JSON.stringify(old));
     assert.equal(migrated.valid,true);
-    assert.equal(migrated.state.schemaVersion,8);
+    assert.equal(migrated.state.schemaVersion,9);
     for (const key of ['runId','day','revision','phase','focus','focusDays','weekFocusDays','skills','peopleMet','flags','events','favorites','resolvedStories']) assert.deepEqual(migrated.state[key],old[key],key);
     assert.equal(migrated.state.pending?.storyId,old.pending?.storyId);
     assert.equal(migrated.state.commands[0].type,'legacy.import');
