@@ -1,10 +1,10 @@
-# 当前试玩：周五，灯还亮着
+# 当前试玩：大学慢慢来 · 今日安排
 
-[在线体验两次周五](https://three-weekends-yuki.yuki-uix.chatgpt.site/fridays/)
+[在线体验连续八天](https://three-weekends-yuki.yuki-uix.chatgpt.site/fridays/)
 
-独立短片段：第一次跟着小满进入教室，一周中选两段课余，第二次自己选片、排座，回应来晚的同学。试过的方法和了解的人影响可采取的动作与人物反应。无计时挂机、统一分数或求职目标，旧版秋季存档保留。
+从10月11日到18日，自己安排每天留给自己的那段课余。选片、动手两项能力可以持续练；到中途便出现试排片单、独自试放等新做法。第二个周五可以独立策划、开放教室、合作或赴私人邀约，条件提前可见，实际作品、职责和看片结果不同。
 
-运行 `npm run dev` 后访问 `http://127.0.0.1:4173/fridays/`。无需安装依赖或构建。`npm test` 包含片段的规则、分歧和存档重放检查。片段使用 `campus-fridays.save.v1` 本地存档；[具体范围](../docs/two-fridays-slice.md)。
+运行 `npm run dev` 后访问 `http://127.0.0.1:4173/fridays/`。无需安装依赖或构建。`npm test` 包含日历、时间预算、方法成长、具体目标结果及存档回放。片段使用 `campus-fridays.save.v2`；[具体范围](../docs/two-fridays-slice.md)。
 
 ---
 

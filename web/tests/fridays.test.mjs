@@ -1,142 +1,153 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, getChoices, choose, getOutcome, validateSave } from '../dist/fridays/engine.js';
+import { createGame, choose, getChoices, getForecast, getOutcome, validateSave } from '../dist/fridays/engine.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
-const play = choices => choices.reduce((state, choice) => choose(state, choice), createGame());
-const ready = (prep = ['preview', 'room'], first = ['picture', 'pause']) => play([...first, 'return', ...prep]);
-const finish = ({ prep = ['preview', 'room'], first = ['picture', 'pause'], film = 'feature', seats = 'rows', door = 'recap' } = {}) => play([...first, 'return', ...prep, film, seats, door]);
+const play = choices => choices.reduce((state, id) => choose(state, id), createGame());
+const calendar = (intro, activities) => play([intro, ...activities]);
+const curation = () => calendar('watch', ['watch', 'curate_daily', 'watch', 'ahe', 'linye', 'rest']);
+const roomPlan = (friends = ['linye', 'linye', 'rest']) => calendar('help', ['practice', 'open_trial', 'practice', ...friends]);
+const collaboration = () => calendar('watch', ['watch', 'practice', 'practice', 'ahe', 'linye', 'rest']);
+const finish = (state, route, decisions) => decisions.reduce((current, id) => choose(current, id), choose(state, route));
 
-test('the slice has exactly two preparations and ends after eight meaningful decisions', () => {
-  const state = finish();
-  assert.equal(state.stage, 'ending');
-  assert.equal(state.history.length, 8);
-  assert.deepEqual(state.prep, ['preview', 'room']);
-  assert.deepEqual(getChoices(state), []);
-  assert.throws(() => choose(state, 'return'), /Unavailable/);
-  assert.equal(getOutcome(createGame()), null);
-});
-
-test('choices produce a new state and a chronological replayable record', () => {
-  const before = createGame();
-  const snapshot = copy(before);
-  const after = choose(before, 'welcome');
-  assert.deepEqual(before, snapshot);
-  assert.equal(after.stage, 'first_door');
-  assert.equal(after.first.help, 'welcome');
-  assert.deepEqual(after.history, [{ stage: 'arrival', choiceId: 'welcome' }]);
-  assert.notEqual(after.first, before.first);
-});
-
-test('practice unlocks a new way to handle the same situation without removing basic methods', () => {
-  const plain = ready(['ahe', 'linye']);
-  const practiced = ready(['preview', 'room']);
-  assert.deepEqual(getChoices(choose(plain, 'feature')), ['rows', 'circle']);
-  assert.deepEqual(getChoices(choose(practiced, 'feature')), ['rows', 'circle', 'arc']);
-  const plainDoor = choose(choose(plain, 'feature'), 'rows');
-  const practiceDoor = choose(choose(practiced, 'feature'), 'rows');
-  assert.deepEqual(getChoices(plainDoor), ['pause', 'side', 'handoff', 'message']);
-  assert.deepEqual(getChoices(practiceDoor), ['pause', 'side', 'recap']);
-  assert.throws(() => choose(plainDoor, 'recap'));
-  assert.throws(() => choose(choose(plain, 'feature'), 'arc'));
-});
-
-test('each preparation uses the actual free period and cannot be repeated or retroactively changed', () => {
-  let state = play(['picture', 'quiet', 'return', 'preview']);
-  assert.equal(state.stage, 'prep_two');
-  assert.equal(getChoices(state).includes('preview'), false);
-  assert.throws(() => choose(state, 'preview'));
-  state = choose(state, 'linye');
-  assert.equal(state.stage, 'film');
-  assert.throws(() => choose(state, 'ahe'));
-});
-
-test('first Friday welcome makes Ahe help point out a seat so Xiaoman can stay seated next week', () => {
-  const unknown = getOutcome(finish({ first: ['picture', 'quiet'], door: 'side' }));
-  const recognized = getOutcome(finish({ first: ['welcome', 'quiet'], door: 'side' }));
-  assert.equal(unknown.room.xiaoman, 'door');
-  assert.equal(recognized.room.xiaoman, 'seated');
-  assert.equal(unknown.room.you, 'door');
-  assert.equal(unknown.room.linye, 'door', 'the 20:50 hallway conversation has both speakers in the hallway');
-  assert.equal(recognized.room.you, 'seated');
-  assert.notEqual(unknown.key, recognized.key);
-});
-
-test('last week’s first conversation changes whether the same informal room draws Linye into speaking', () => {
-  const options = { film: 'shorts', seats: 'circle', door: 'side' };
-  const listened = getOutcome(finish({ ...options, first: ['welcome', 'pause'] }));
-  const watched = getOutcome(finish({ ...options, first: ['welcome', 'quiet'] }));
-  assert.equal(listened.room.linye, 'talking');
-  assert.equal(watched.room.linye, 'seated');
-  assert.equal(listened.room.xiaoman, watched.room.xiaoman);
-});
-
-test('a familiar preference provides a quiet invitation, not a forced public speech', () => {
-  const familiar = getOutcome(finish({ prep: ['ahe', 'room'], film: 'shorts', seats: 'arc', door: 'handoff' }));
-  const unfamiliar = getOutcome(finish({ prep: ['preview', 'room'], film: 'shorts', seats: 'arc', door: 'recap' }));
-  assert.equal(familiar.room.ahe, 'talking');
-  assert.equal(unfamiliar.room.ahe, 'seated');
-  assert.equal(familiar.room.xiaoman, 'seated');
-  assert.match(familiar.paragraphs.join(''), /没让阿禾/);
-});
-
-test('different valid room arrangements serve viewing or conversation without a score', () => {
-  const movie = getOutcome(finish());
-  const conversation = getOutcome(finish({ film: 'shorts', seats: 'arc' }));
-  assert.equal(movie.room.linye, 'seated');
-  assert.equal(conversation.room.linye, 'talking');
-  assert.notEqual(movie.title, conversation.title);
-  assert.equal('score' in movie, false);
-  assert.equal('score' in conversation, false);
-  assert.ok(movie.next.length > 0 && conversation.next.length > 0);
-});
-
-test('every reachable film, seating and arrival combination yields coherent, finite outcomes', () => {
-  let cases = 0;
-  for (const help of ['picture', 'welcome']) for (const response of ['pause', 'quiet']) {
-    for (const prepOne of ['preview', 'room', 'ahe', 'linye']) for (const prepTwo of ['preview', 'room', 'ahe', 'linye'].filter(id => id !== prepOne)) {
-      for (const film of ['feature', 'shorts']) {
-        const beforeSeats = choose(ready([prepOne, prepTwo], [help, response]), film);
-        for (const seats of getChoices(beforeSeats)) {
-          const beforeDoor = choose(beforeSeats, seats);
-          for (const door of getChoices(beforeDoor)) {
-            const state = choose(beforeDoor, door);
-            const outcome = getOutcome(state);
-            assert.ok(outcome.title && outcome.key);
-            assert.ok(outcome.paragraphs.every(item => typeof item === 'string' && item.length > 0));
-            assert.ok(outcome.paragraphs.length <= 4);
-            assert.ok(outcome.next.length <= 2);
-            assert.ok(['seated', 'talking', 'door'].includes(outcome.room.you));
-            assert.ok(['seated', 'door'].includes(outcome.room.xiaoman));
-            assert.ok(['seated', 'talking', 'left'].includes(outcome.room.ahe));
-            assert.ok(['seated', 'talking', 'door'].includes(outcome.room.linye));
-            assert.deepEqual(validateSave(state), state);
-            cases++;
-          }
-        }
-      }
-    }
+test('one free block advances exactly one consecutive date, with the same day available until chosen', () => {
+  const start = createGame(), snapshot = copy(start);
+  const saturday = choose(start, 'help');
+  assert.deepEqual(start, snapshot);
+  assert.equal(saturday.phase, 'schedule'); assert.equal(saturday.day, 1);
+  assert.deepEqual(saturday.skills, { content: 0, hands: 1 });
+  let state = saturday;
+  for (let day = 1; day <= 6; day++) {
+    assert.equal(state.day, day); assert.equal(state.phase, 'schedule');
+    const before = copy(state); state = choose(state, 'rest');
+    assert.deepEqual(before.skills, state.skills);
   }
-  assert.equal(cases, 816);
+  assert.equal(state.phase, 'friday'); assert.equal(state.day, 7);
+  assert.deepEqual(getChoices(state), ['audience']);
 });
 
-test('saves resume from valid decisions and reject invented state, out-of-order choices and unsafe shapes', () => {
-  const partial = ready();
-  assert.deepEqual(validateSave(copy(partial)), partial);
-  assert.deepEqual(validateSave(createGame()), createGame());
-  for (const malformed of [null, [], {}, 'save', { ...partial, version: 99 }, { ...partial, extra: true }, { ...partial, stage: 'ending' }, { ...partial, prep: ['ahe', 'linye'] }, { ...partial, plan: { ...partial.plan, door: 'recap' } }]) {
-    assert.equal(validateSave(malformed), null);
-  }
-  const reordered = copy(partial);
-  [reordered.history[0], reordered.history[1]] = [reordered.history[1], reordered.history[0]];
-  assert.equal(validateSave(reordered), null);
-  const duplicate = copy(partial);
-  duplicate.history[4].choiceId = duplicate.history[3].choiceId;
-  assert.equal(validateSave(duplicate), null);
-  const long = copy(partial);
-  long.history = Array(100).fill({ stage: 'arrival', choiceId: 'picture' });
+test('repeated daily practice reaches a new kind of activity at level two, and a real work must be made', () => {
+  let state = choose(createGame(), 'watch');
+  assert.equal(getChoices(state).includes('curate_daily'), false);
+  state = choose(state, 'watch');
+  assert.equal(getChoices(state).includes('curate_daily'), true);
+  const made = choose(state, 'curate_strange');
+  assert.equal(made.works.theme, 'strange'); assert.equal(made.skills.content, 3);
+  const trainedOnly = calendar('watch', ['watch', 'watch', 'watch', 'rest', 'rest', 'rest']);
+  assert.equal(trainedOnly.skills.content, 4);
+  assert.equal(getChoices(trainedOnly).includes('curator'), false, 'a high number alone cannot substitute a playlist');
+  assert.equal(getChoices(curation()).includes('curator'), true);
+  let hands = choose(createGame(), 'help');
+  assert.equal(getChoices(hands).includes('open_trial'), false);
+  hands = choose(hands, 'practice');
+  assert.equal(getChoices(hands).includes('open_trial'), true);
+  hands = choose(hands, 'open_trial');
+  assert.equal(hands.works.roomTested, true); assert.equal(hands.skills.hands, 3);
+});
+
+test('six afternoons impose an actual planning limit: both level-four specialisms cannot fit', () => {
+  const curator = curation(), room = roomPlan(), balanced = collaboration();
+  assert.equal(getChoices(curator).includes('curator'), true);
+  assert.equal(getChoices(curator).includes('open_room'), false);
+  assert.equal(getChoices(room).includes('open_room'), true);
+  assert.equal(getChoices(room).includes('curator'), false);
+  assert.equal(getChoices(balanced).includes('cohost'), true);
+  assert.ok(balanced.skills.content + balanced.skills.hands <= 7);
+  // Even assigning every available point to skills gives at most seven, below 4+4.
+  const allSkillPoints = calendar('watch', ['watch', 'curate_daily', 'watch', 'practice', 'practice', 'open_trial']);
+  assert.equal(allSkillPoints.skills.content + allSkillPoints.skills.hands, 7);
+  assert.equal(getChoices(allSkillPoints).includes('curator') && getChoices(allSkillPoints).includes('open_room'), false);
+});
+
+test('forecasts expose the exact unmet requirement before the final route choice', () => {
+  const state = choose(createGame(), 'watch');
+  const forecasts = getForecast(state);
+  assert.deepEqual(forecasts.map(item => item.id), ['curator', 'open_room', 'cohost', 'private']);
+  assert.equal(forecasts[0].available, false);
+  assert.deepEqual(forecasts[0].requirements[0], { label: '选片熟练', current: 1, target: 4, met: false });
+  assert.equal(forecasts[0].requirements[1].current, 0);
+  assert.equal(getForecast(curation()).find(item => item.id === 'curator').available, true);
+});
+
+test('the same finished playlist can miss its goal when a long movie starts after the late class', () => {
+  const state = curation();
+  const early = getOutcome(finish(state, 'curator', ['feature', 'early']));
+  const late = getOutcome(finish(state, 'curator', ['feature', 'late']));
+  const shortLate = getOutcome(finish(state, 'curator', ['two_shorts', 'late']));
+  assert.equal(early.finished, true); assert.equal(early.watchedMinutes, 82);
+  assert.equal(late.finished, false); assert.equal(late.watchedMinutes, 65);
+  assert.equal(shortLate.finished, true); assert.equal(shortLate.watchedMinutes, 32);
+  assert.equal(late.artifact, 'playlist'); assert.equal(late.guests, 4);
+  assert.deepEqual(late.sharedWith, ['xiaoman', 'ahe', 'linye']);
+  assert.ok(early.conditions.some(text => text.includes('30分钟以后的内容')));
+  assert.ok(late.conditions.some(text => text.includes('一起从开头看')));
+});
+
+test('repeated contact changes what a friend actively does, rather than only unlocking a different line', () => {
+  const known = roomPlan(['linye', 'rest', 'rest']);
+  const close = roomPlan();
+  const small = getOutcome(finish(known, 'open_room', ['quiet_corner', 'sit_with_friends']));
+  const helped = getOutcome(finish(close, 'open_room', ['quiet_corner', 'sit_with_friends']));
+  const busy = getOutcome(finish(known, 'open_room', ['chat_corner', 'welcome_all']));
+  assert.equal(small.guests, 3); assert.equal(helped.guests, 6);
+  assert.equal(helped.finished, true); assert.equal(helped.watchedMinutes, 32);
+  assert.equal(helped.room.linye, 'door'); assert.equal(helped.room.you, 'seated');
+  assert.equal(busy.guests, 6); assert.equal(busy.finished, false); assert.equal(busy.watchedMinutes, 14);
+  assert.equal(busy.room.you, 'door');
+});
+
+test('cooperation owns one task, and choosing a bigger evening sacrifices actual viewing time', () => {
+  const state = collaboration();
+  const large = getOutcome(finish(state, 'cohost', ['make_playlist', 'big_room']));
+  const small = getOutcome(finish(state, 'cohost', ['run_projector', 'small_room']));
+  assert.equal(large.ownedTask, '选片与小满合作'); assert.equal(large.artifact, 'playlist');
+  assert.equal(small.ownedTask, '现场与小满合作'); assert.equal(small.artifact, 'room');
+  assert.equal(large.guests, 6); assert.equal(large.watchedMinutes, 14); assert.equal(large.finished, false);
+  assert.equal(small.guests, 3); assert.equal(small.watchedMinutes, 32); assert.equal(small.finished, true);
+});
+
+test('friends can suggest a different location and social ending without hosting any public event', () => {
+  const state = calendar('watch', ['ahe', 'ahe', 'rest', 'rest', 'rest', 'rest']);
+  assert.equal(getChoices(state).includes('private'), true);
+  const result = getOutcome(finish(state, 'private', ['private_feature']));
+  assert.equal(result.artifact, 'dorm'); assert.equal(result.guests, 2); assert.equal(result.ownedTask, '朋友相处');
+  assert.equal(result.watchedMinutes, 82); assert.equal(result.finished, true);
+  assert.deepEqual(result.sharedWith, ['ahe']); assert.equal(result.room.xiaoman, 'left');
+});
+
+test('no preparation still leaves a complete audience evening with a real choice between film and supper', () => {
+  const state = calendar('watch', Array(6).fill('rest'));
+  const movie = getOutcome(finish(state, 'audience', ['sit_front', 'stay_credits']));
+  const supper = getOutcome(finish(state, 'audience', ['sit_back', 'leave_with_ahe']));
+  assert.equal(movie.artifact, 'ticket'); assert.equal(movie.finished, true); assert.equal(movie.watchedMinutes, 82);
+  assert.equal(supper.finished, false); assert.equal(supper.watchedMinutes, 60);
+  assert.deepEqual(movie.sharedWith, ['xiaoman']); assert.deepEqual(supper.sharedWith, ['ahe']);
+  assert.equal(supper.room.ahe, 'talking'); assert.equal(supper.room.you, 'talking');
+});
+
+test('choices remain finite and immutable, and terminal state cannot be advanced', () => {
+  const state = curation(), snapshot = copy(state);
+  const next = choose(state, 'curator');
+  assert.deepEqual(state, snapshot); assert.equal(next.phase, 'scene'); assert.deepEqual(next.finale, []);
+  assert.deepEqual(getChoices(next), ['feature', 'two_shorts']);
+  assert.throws(() => choose(next, 'open_room'));
+  const ended = choose(choose(next, 'feature'), 'early');
+  assert.equal(ended.phase, 'ending'); assert.deepEqual(getChoices(ended), []);
+  assert.throws(() => choose(ended, 'watch')); assert.equal(getOutcome(state), null);
+  const repeated = calendar('watch', Array(6).fill('watch'));
+  assert.equal(repeated.skills.content, 4);
+});
+
+test('strict replay resumes partial plans but rejects forged experience, skipped dates and old saves', () => {
+  const state = curation(), ended = finish(state, 'curator', ['feature', 'late']);
+  for (const valid of [createGame(), choose(createGame(), 'help'), state, choose(state, 'curator'), ended]) assert.deepEqual(validateSave(copy(valid)), valid);
+  for (const bad of [null, [], {}, { ...state, version: 1 }, { ...state, extra: true }, { ...state, day: 6 }, { ...state, route: 'private' }, { ...state, skills: { content: 4, hands: 4 } }, { ...state, works: { theme: 'strange', roomTested: true } }]) assert.equal(validateSave(bad), null);
+  const skipped = copy(state); skipped.history[2].day++;
+  assert.equal(validateSave(skipped), null);
+  const forged = copy(state); forged.history[1].choiceId = 'curate_daily';
+  assert.equal(validateSave(forged), null);
+  const long = copy(state); long.history = Array(11).fill(long.history[0]);
   assert.equal(validateSave(long), null);
-  const extraEvent = copy(partial);
-  extraEvent.history[0].unexpected = true;
-  assert.equal(validateSave(extraEvent), null);
+  const extra = copy(state); extra.history[0].extra = true;
+  assert.equal(validateSave(extra), null);
 });

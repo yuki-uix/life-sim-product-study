@@ -1,154 +1,169 @@
-/** A tiny, deterministic scene engine. The player owns decisions, never a score. */
-export const SAVE_VERSION = 1;
-
-const STAGES = ['arrival', 'first_door', 'first_close', 'prep_one', 'prep_two', 'film', 'seats', 'door', 'ending'];
-const PREPARATIONS = ['preview', 'room', 'ahe', 'linye'];
+/** Calendar, practice and finite evening plans for the two-Friday slice. */
+export const SAVE_VERSION = 2;
 const clone = value => JSON.parse(JSON.stringify(value));
+const PREPARATIONS = ['watch', 'practice', 'ahe', 'linye', 'rest'];
+const ROUTES = ['curator', 'open_room', 'cohost', 'private', 'audience'];
+const EVENINGS = {
+  curator: [['feature', 'two_shorts'], ['early', 'late']],
+  open_room: [['quiet_corner', 'chat_corner'], ['welcome_all', 'sit_with_friends']],
+  cohost: [['make_playlist', 'run_projector'], ['big_room', 'small_room']],
+  private: [['private_feature', 'private_shorts']],
+  audience: [['sit_front', 'sit_back'], ['stay_credits', 'leave_with_ahe']],
+};
 
 export function createGame() {
   return {
-    version: SAVE_VERSION,
-    stage: 'arrival',
-    first: { help: null, response: null },
-    prep: [],
-    plan: { film: null, seats: null, door: null },
-    history: [],
+    version: SAVE_VERSION, phase: 'intro', day: 0,
+    skills: { content: 0, hands: 0 }, visits: { ahe: 0, linye: 0 },
+    works: { theme: null, roomTested: false }, route: null, finale: [], history: [],
   };
 }
 
+export function getForecast(state) {
+  const requirement = (label, current, target) => ({ label, current, target, met: current >= target });
+  const route = (id, requirements) => ({ id, available: requirements.every(item => item.met), requirements });
+  return [
+    route('curator', [requirement('选片熟练', state.skills.content, 4), requirement('做过一份片单', state.works.theme ? 1 : 0, 1)]),
+    route('open_room', [requirement('动手熟练', state.skills.hands, 4), requirement('试开过一次活动室', state.works.roomTested ? 1 : 0, 1)]),
+    route('cohost', [requirement('选片熟练', state.skills.content, 2), requirement('动手熟练', state.skills.hands, 2)]),
+    route('private', [requirement('和阿禾相处', state.visits.ahe, 2)]),
+  ];
+}
+
 export function getChoices(state) {
-  switch (state?.stage) {
-    case 'arrival': return ['picture', 'welcome'];
-    case 'first_door': return ['pause', 'quiet'];
-    case 'first_close': return ['return'];
-    case 'prep_one':
-    case 'prep_two': return PREPARATIONS.filter(id => !state.prep.includes(id));
-    case 'film': return ['feature', 'shorts'];
-    case 'seats': return ['rows', 'circle', ...(state.prep.includes('room') ? ['arc'] : [])];
-    case 'door': return [
-      'pause', 'side',
-      ...(state.prep.includes('preview') ? ['recap'] : []),
-      ...(state.prep.includes('ahe') ? ['handoff'] : []),
-      ...(state.prep.includes('linye') ? ['message'] : []),
-    ];
-    default: return [];
-  }
+  if (state?.phase === 'intro' && state.day === 0) return ['watch', 'help'];
+  if (state?.phase === 'schedule' && state.day >= 1 && state.day <= 6) return [
+    ...PREPARATIONS,
+    ...(state.skills.content >= 2 ? ['curate_daily', 'curate_strange'] : []),
+    ...(state.skills.hands >= 2 ? ['open_trial'] : []),
+  ];
+  if (state?.phase === 'friday' && state.day === 7) return [...getForecast(state).filter(item => item.available).map(item => item.id), 'audience'];
+  if (state?.phase === 'scene' && state.day === 7) return [...(EVENINGS[state.route]?.[state.finale.length] || [])];
+  return [];
 }
 
 export function choose(state, choiceId) {
   if (!getChoices(state).includes(choiceId)) throw new Error(`Unavailable choice: ${String(choiceId)}`);
   const next = clone(state);
-  const stage = state.stage;
-  if (stage === 'arrival') next.first.help = choiceId;
-  if (stage === 'first_door') next.first.response = choiceId;
-  if (stage === 'prep_one' || stage === 'prep_two') next.prep.push(choiceId);
-  if (stage === 'film') next.plan.film = choiceId;
-  if (stage === 'seats') next.plan.seats = choiceId;
-  if (stage === 'door') next.plan.door = choiceId;
-  next.history.push({ stage, choiceId });
-  next.stage = STAGES[STAGES.indexOf(stage) + 1];
+  const add = key => { next.skills[key] = Math.min(4, next.skills[key] + 1); };
+  next.history.push({ phase: state.phase, day: state.day, choiceId });
+  if (state.phase === 'intro') {
+    add(choiceId === 'watch' ? 'content' : 'hands');
+    next.day = 1; next.phase = 'schedule';
+  } else if (state.phase === 'schedule') {
+    if (choiceId === 'watch') add('content');
+    if (choiceId === 'practice') add('hands');
+    if (choiceId === 'ahe' || choiceId === 'linye') next.visits[choiceId] = Math.min(2, next.visits[choiceId] + 1);
+    if (choiceId === 'curate_daily' || choiceId === 'curate_strange') {
+      add('content'); next.works.theme = choiceId === 'curate_daily' ? 'daily' : 'strange';
+    }
+    if (choiceId === 'open_trial') { add('hands'); next.works.roomTested = true; }
+    next.day++;
+    if (next.day === 7) next.phase = 'friday';
+  } else if (state.phase === 'friday') {
+    next.route = choiceId; next.finale = []; next.phase = 'scene';
+  } else if (state.phase === 'scene') {
+    next.finale.push(choiceId);
+    if (next.finale.length === EVENINGS[next.route].length) next.phase = 'ending';
+  }
   return next;
 }
 
-/** A snapshot at 20:50: no score, just a different evening people shared. */
+/** Facts describe the player's experience; "finished" means the player watched the whole program. */
 export function getOutcome(state) {
-  if (state?.stage !== 'ending') return null;
-  const { film, seats, door } = state.plan;
-  const short = film === 'shorts';
-  const open = seats !== 'rows';
-  const familiarGreeting = state.first.help === 'welcome';
-  const familiarVoice = state.first.response === 'pause';
-  const doorway = door === 'side' && !familiarGreeting;
-  const room = {
-    you: doorway ? 'door' : short && open ? 'talking' : 'seated',
-    xiaoman: doorway ? 'door' : 'seated',
-    ahe: !doorway && short && open && state.prep.includes('ahe') ? 'talking' : 'seated',
-    linye: doorway ? 'door' : short && open && (familiarVoice || door !== 'side') ? 'talking' : 'seated',
-  };
-  const title = doorway ? '散场以后，走廊里还没聊完'
-    : short ? room.linye === 'talking' ? '下一场的片单，不只在你手机里' : '后排还亮着一小块光'
-      : '这次，小满看到了片尾';
-  const paragraphs = [];
+  if (state?.phase !== 'ending') return null;
+  const route = state.route;
+  const [first, second] = state.finale;
+  const room = { you: 'seated', xiaoman: 'left', ahe: 'left', linye: 'left' };
+  let artifact = 'ticket', film = 'shorts', finished = true, guests = 3, watchedMinutes = 32, ownedTask = '观众';
+  let sharedWith = [];
+  const conditions = [];
+  const share = id => { if (!sharedWith.includes(id)) sharedWith.push(id); };
 
-  const layoutText = seats === 'rows'
-    ? '大家还朝着银幕坐着，不开口也自在。'
-    : seats === 'circle'
-      ? '看电影时转过的椅子，片尾后又转回彼此的方向。'
-      : '你这周试过的弧形座位留着一道过道，想说话的人稍稍转过身。';
-  paragraphs.push((short
-    ? '两部短片放完了，话题从银幕上的便利店绕到了校门口的夜宵摊。'
-    : '最后一班电车从银幕上开走。没有人急着开顶灯，阿禾抱着外套，等片尾音乐播完。') + layoutText);
-
-  const methodText = {
-    pause: short
-      ? '你刚才停下那轮讨论，给林野留了一个介绍自己的空当。原来那段话没再接回去，他倒是记住了大家的名字。'
-      : '电影等了三分钟，林野听明白后和大家一起往下看。阿禾请你别讲后面：她还想留一点自己看懂的余地。',
-    side: (familiarGreeting ? '阿禾记得上周你给她留座，指了指身旁的空椅子，小满便放心坐着。' : '你去门边接林野，小满习惯性地跟了出来；你们还没自然地把这件事交接过去。')
-      + (short ? '林野错过了第一部，第二部开始前，你陪他聊了几句。' : '电影一直放着。林野暂时没懂那封信的来历，决定明天自己补开头。'),
-    recap: short
-      ? '你把短片留下的问题写在纸上递到门边。林野有自己的想法，却没看过大家争论的那个镜头；错过的内容，仍然要以后再补。'
-      : '你写清前情，把纸条送到门边。林野能接着看了，你自己却错过了桥头的一小段，散场后还得问阿禾。纸条也替代不了他错过的镜头。',
-    handoff: '阿禾愿意帮忙留座，不必当众讲话。'
-      + (short ? '她领林野进来，回来时你们刚好聊过她想接的那句话。' : '她领林野进来，回来时已经错过桥头的一小段，散场后请你补了一句。'),
-    message: '你把这周聊好的空位和当前进度发给林野。他自己轻轻进来，不必被所有人看着，也少了一个正式认识大家的机会。',
-  };
-  paragraphs.push(methodText[door]);
-
-  if (room.linye === 'talking') {
-    paragraphs.push(familiarVoice
-      ? '林野记得上周你停下来听他说话。这次他自己接了一句，临走前还往群里发了部短片：“下次能不能看看这个？”'
-      : '林野参与了接下来的那轮讨论。没有补完前一部，也可以一起看第二部；他临走前问，下周还开不开门。');
-  } else if (!doorway) {
-    paragraphs.push('林野没有在大家面前说话，收椅子时才问起那个镜头。片名已经记进手机里，安静看完也算是他喜欢的一个晚上。');
+  if (route === 'curator') {
+    artifact = 'playlist'; ownedTask = '选片'; film = first === 'feature' ? 'feature' : 'shorts';
+    const duration = film === 'feature' ? 82 : 32;
+    const remaining = second === 'early' ? 95 : 65;
+    watchedMinutes = Math.min(duration, remaining); finished = watchedMinutes === duration;
+    room.xiaoman = 'seated'; share('xiaoman'); guests = 2;
+    conditions.push(state.works.theme === 'daily' ? '你亲手完成了日常主题片单。' : '你亲手完成了奇妙主题片单。');
+    conditions.push(second === 'early' ? '19:10开场，20:45关门，最多可放95分钟。' : '19:40开场，20:45关门，最多可放65分钟。');
+    if (!finished) conditions.push('82分钟长片只放到第65分钟，关门前没有放完。');
+    else conditions.push(`${duration}分钟节目完整放完，你也从头看到了尾。`);
+    if (state.visits.ahe >= 1) { guests++; room.ahe = 'seated'; share('ahe'); conditions.push('阿禾收到你的邀请，19:10就来了。'); }
+    if (state.visits.linye >= 1) {
+      guests++; room.linye = 'seated'; share('linye');
+      conditions.push(second === 'early' ? '林野19:40下课后来到，只看到了开场30分钟以后的内容。' : '按你们事先说好的时间，林野19:40到场，一起从开头看。');
+    }
+  } else if (route === 'open_room') {
+    artifact = 'room'; ownedTask = '现场';
+    const helped = state.visits.linye >= 2;
+    const welcoming = second === 'welcome_all';
+    guests = welcoming || helped ? 6 : 3;
+    watchedMinutes = welcoming ? 14 : 32;
+    finished = !welcoming;
+    room.you = welcoming ? 'door' : first === 'chat_corner' ? 'talking' : 'seated';
+    room.xiaoman = 'seated'; room.ahe = first === 'chat_corner' ? 'talking' : 'seated';
+    share('xiaoman'); share('ahe');
+    conditions.push(first === 'quiet_corner' ? '你布置了安静观看区，座位朝向银幕。' : '你布置了交流区，两部短片中间留给大家聊天。');
+    if (welcoming) conditions.push('活动室向来往同学开放，共6人参加；你在门边照顾进出，只坐下看完了14分钟的第一部。');
+    else if (helped) conditions.push('林野主动接过门口接待，6人参加；你能和朋友完整看完32分钟短片。');
+    else conditions.push('只约你、小满和阿禾3人，你能坐下完整看完32分钟短片。');
+    if (helped) {
+      room.linye = 'door'; share('linye'); conditions.push('这周两次相处后，林野记得你的试场，主动来帮忙接待。');
+    } else if (welcoming && state.visits.linye >= 1) {
+      room.linye = first === 'chat_corner' ? 'talking' : 'seated'; share('linye'); conditions.push('林野来参加，但没有替你承担门口工作。');
+    }
+  } else if (route === 'cohost') {
+    const selecting = first === 'make_playlist';
+    artifact = selecting ? 'playlist' : 'room'; ownedTask = selecting ? '选片与小满合作' : '现场与小满合作';
+    const big = second === 'big_room'; guests = big ? 6 : 3;
+    watchedMinutes = big ? 14 : 32; finished = !big;
+    room.you = big ? selecting ? 'talking' : 'door' : 'seated';
+    room.xiaoman = big && selecting ? 'door' : 'seated'; room.ahe = 'seated';
+    share('xiaoman'); share('ahe');
+    conditions.push(selecting ? '你负责片单，小满负责设备与现场。' : '你负责设备与现场，小满负责片单。');
+    conditions.push(big ? '6人的大场需要你继续介绍和照顾进度；节目放完32分钟，你自己只完整看了第一部14分钟。' : '3人的小场只约你、小满和阿禾，分工准备以后，你完整看了32分钟短片。');
+    if (big && state.visits.linye >= 1) { room.linye = 'seated'; share('linye'); conditions.push('林野也来了，在小满预留的位置参加。'); }
+  } else if (route === 'private') {
+    artifact = 'dorm'; ownedTask = '朋友相处'; guests = 2;
+    film = first === 'private_feature' ? 'feature' : 'shorts'; watchedMinutes = film === 'feature' ? 82 : 32;
+    room.ahe = film === 'shorts' ? 'talking' : 'seated'; room.you = film === 'shorts' ? 'talking' : 'seated'; share('ahe');
+    conditions.push('这周和阿禾相处两次以后，她主动约你在宿舍一起看片。');
+    conditions.push(`只有你和阿禾2人，没有活动室接待任务；${watchedMinutes}分钟${film === 'feature' ? '长片' : '短片'}完整看完。`);
+  } else if (route === 'audience') {
+    artifact = 'ticket'; ownedTask = '观众'; film = 'feature'; guests = 3;
+    room.xiaoman = 'seated'; room.ahe = 'seated';
+    if (first === 'sit_front') { share('xiaoman'); conditions.push('你坐到前排，和小满一起留意银幕上的细节。'); }
+    else { share('ahe'); conditions.push('你坐在后排阿禾旁边，一起小声交流。'); }
+    if (second === 'stay_credits') {
+      watchedMinutes = 82; finished = true; conditions.push('你留到片尾，完整看了82分钟电影。');
+    } else {
+      watchedMinutes = 60; finished = false; room.you = 'talking'; room.ahe = 'talking'; share('ahe');
+      conditions.push('你和阿禾提前去吃夜宵，只看了60分钟电影，错过最后22分钟。');
+    }
   }
-
-  let closing = doorway
-    ? '后来小满回去看完了电影。散场时，你们三个又在走廊聊起来，约好了下次早点一起布置，暂时还没人想走。'
-    : '小满没再来来回回守着门。现在她端着热水坐在原来的椅子上，问你：“下周我也提前给你挑一部？”';
-  if (room.ahe === 'talking') closing += '你没让阿禾“给大家说两句”，只在旁边问她那个镜头，她便靠过来小声接上了。';
-  paragraphs.push(closing);
-
-  const learned = [state.first.help === 'picture'
-    ? '上周调过的画面，这次你知道从哪里开始。'
-    : '阿禾记得上周你给她留过位置，也留意谁还站在门边。'];
-  const knowledge = {
-    preview: '提前看过候选片，能写前情，却替代不了错过的镜头。',
-    room: seats === 'arc'
-      ? '这周在空教室试出的弧形座位，今晚真的摆出来了。'
-      : `试过弧形摆法以后，今晚你还是选了${seats === 'rows' ? '面向银幕的几排' : '围坐的圈'}。知道另一种摆法，也可以暂时不用。`,
-    ahe: '阿禾愿意私下帮忙，不喜欢突然被叫到所有人面前。',
-    linye: '林野的工作室到七点半才下课；晚来并不是不想来。',
-  };
-  learned.push(...state.prep.map(id => knowledge[id]));
-  const next = [short
-    ? '阿禾发来一部长片：“下次能不能留一个安静看完的晚上？”'
-    : '林野发来一个短片链接：“下次要不要看点短的，剩下时间聊聊？”'];
-  next.push(seats === 'rows'
-    ? '小满说椅子还可以换个摆法，问你有没有想试的。'
-    : '下一次，你想继续坐在这个圈里，还是回到银幕前？');
-  return {
-    key: [film, seats, door, state.first.help, state.first.response, room.ahe, room.linye, room.xiaoman].join('-'),
-    title, paragraphs, room, learned, next,
-  };
+  return { route, artifact, film, finished, guests, watchedMinutes, sharedWith, ownedTask, room, conditions };
 }
 
-const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+function same(left, right) {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left), rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every(key => Object.hasOwn(right, key) && same(left[key], right[key]));
+}
 
-/** Only an exact, replayable history is accepted; saves cannot invent knowledge or skip scenes. */
+/** Every saved field must be reachable by replaying an exact, bounded calendar history. */
 export function validateSave(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.version !== SAVE_VERSION || !Array.isArray(raw.history)) return null;
-  if (raw.history.length > STAGES.length - 1) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.version !== SAVE_VERSION || !Array.isArray(raw.history) || raw.history.length > 10) return null;
   let replay = createGame();
   try {
-    for (const event of raw.history) {
-      if (!event || typeof event !== 'object' || Array.isArray(event) || Object.keys(event).length !== 2) return null;
-      if (event.stage !== replay.stage || typeof event.choiceId !== 'string') return null;
-      replay = choose(replay, event.choiceId);
+    for (const entry of raw.history) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || Object.keys(entry).length !== 3) return null;
+      if (entry.phase !== replay.phase || entry.day !== replay.day || typeof entry.choiceId !== 'string') return null;
+      replay = choose(replay, entry.choiceId);
     }
-    if (Object.keys(raw).length !== Object.keys(replay).length) return null;
-    if (raw.stage !== replay.stage || !same(raw.first, replay.first) || !same(raw.prep, replay.prep) || !same(raw.plan, replay.plan) || !same(raw.history, replay.history)) return null;
-    return replay;
-  } catch {
-    return null;
-  }
+    return same(raw, replay) ? replay : null;
+  } catch { return null; }
 }

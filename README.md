@@ -1,6 +1,6 @@
 # Life Sim Product Study
 
-> 当前最小试玩：[周五，灯还亮着](https://three-weekends-yuki.yuki-uix.chatgpt.site/fridays/) —— 两次周五、一周之间的两段课余。具体实现范围见 [片段说明](docs/two-fridays-slice.md)。下方秋季原型保留用于对比。
+> 当前最小试玩：[周五，灯还亮着](https://three-weekends-yuki.yuki-uix.chatgpt.site/fridays/) —— 连续八天，每天亲自安排一段课余。具体实现范围见 [片段说明](docs/two-fridays-slice.md)。下方秋季原型保留用于对比。
 
 一次对 [1in8b.life](https://1in8b.life/) 的产品拆解与独立复刻实验。
 
