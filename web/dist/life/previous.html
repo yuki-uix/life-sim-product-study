@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#18252b">
+  <meta name="description" content="在中国的一座小城出生，从童年走到晚年。做几次选择，看看这一生后来怎样。">
+  <title>这一生 · 中国的一生</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="../fonts/fusion-pixel-12px-zh-hans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./styles.css?v=3">
+  <link rel="stylesheet" href="./shell.css?v=4">
+  <script type="module" src="./app.js?v=4"></script>
+</head>
+<body>
+  <a class="skip" href="#current">跳到眼前的生活</a>
+  <header class="site-header"><a href="./" class="brand"><span aria-hidden="true">▤</span> 这一生</a><span class="edition">中国 · 完整人生</span><button type="button" class="text-button" id="restart">重新开始</button></header>
+  <main id="game"><p class="loading">澄江，2005年。修理铺的灯还亮着。</p></main>
+  <footer class="site-footer"><span>虚构人物与未来经历 · 记录保存在当前浏览器</span><span id="save-status" role="status"></span><a href="../life-v1/">上一版人生与存档 ↗</a></footer>
+  <dialog id="inspect-dialog" class="inspect-dialog" aria-labelledby="inspect-title">
+    <header class="inspect-header"><div><p id="inspect-status"></p><h2 id="inspect-title"></h2></div><button type="button" data-close-panel aria-label="返回生活">×</button></header>
+    <nav class="inspect-tabs" aria-label="查看生活"><button type="button" data-panel="plan">安排</button><button type="button" data-panel="status">近况</button><button type="button" data-panel="records">记录</button></nav>
+    <div id="inspect-body" class="inspect-body"></div>
+    <footer class="inspect-footer"><span id="inspect-return-note"></span><button type="button" data-close-panel class="primary-button">返回生活</button></footer>
+  </dialog>
+  <dialog id="restart-dialog" aria-labelledby="restart-title"><h2 id="restart-title">再过一次这一生？</h2><p>回到开头，重新选择从出生或23岁开始。当前这一局会被替换，想留下的卡片可以先保存。</p><div class="dialog-actions"><button type="button" class="text-button" data-dialog="cancel">留在这里</button><button type="button" class="primary-button" data-dialog="confirm">重新开始</button></div></dialog>
+  <p id="notice" class="notice" role="status" hidden></p>
+  <noscript><p class="loading">请启用 JavaScript，来经历并保存这段人生。</p></noscript>
+</body>
+</html>

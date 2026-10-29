@@ -48,6 +48,6 @@ flowchart LR
 
 ## 试玩与实现
 
-[打开对照复刻](https://three-weekends-yuki.yuki-uix.chatgpt.site/replica/)；[上一版](https://three-weekends-yuki.yuki-uix.chatgpt.site/life/)保留。
+[打开对照复刻](https://three-weekends-yuki.yuki-uix.chatgpt.site/replica/)；[上一版](https://three-weekends-yuki.yuki-uix.chatgpt.site/life/previous.html)保留。首页及 `/life/` 统一跳转到 `/replica/`，避免收藏旧入口时仍看到旧界面。
 
 新页面使用独立的 `china-life.replica.save.v2` 与 `china-life.replica.ui.v1`，不覆盖上一版进度。故事继续通过原引擎生成；收藏来自本局实际日志，结尾可以把普通收藏或原有记忆放进同一张本地卡片。新增5项只读适配器检查与7项显示时钟检查，默认测试总数138项。
