@@ -194,6 +194,7 @@ export function getYoungView(state) {
   const canMeetZhou = isActive && [25, 26].includes(state.age) && !y.cooperation;
   return {
     active: isActive, needsPlan: isActive && y.focus === null, focus: y.focus,
+    yearTime: { total: time.total, promised: time.promised, free: time.free },
     yearLabel: state.age + '岁 · ' + (2005 + state.age) + '年',
     headline: state.age === 28 ? '父母收到了搬店通知，周舟也在忙老街采录。' : canMeetZhou ? '周舟今年要剪一段采访，问要不要一起弄。她今年排得出时间。' : time.busy ? '展览排得密，今年少一些自己的时间。' : state.age === 30 && y.followupDue ? '共同署名以后，今年也要给答应的事留时间。' : '工作照常，也给自己的生活留一点位置。',
     items: [
@@ -205,7 +206,7 @@ export function getYoungView(state) {
     focusOptions: FOCUS.map(option => ({ ...option, selected: option.id === y.focus })),
     arrangements: ARRANGEMENTS.map(action => {
       const reason = arrangementAvailability(state, action);
-      return { id: action.id, label: action.label, detail: action.detail, cost: '占今年' + action.time + '个完整空闲周末、' + money(action.money) + '备用金，减少留给日常重心的时间。', available: !reason, reason, selected: planned?.id === action.id };
+      return { id: action.id, label: action.label, detail: action.detail, timeCost: action.time, moneyCost: action.money * 1000, cost: '占今年' + action.time + '个完整空闲周末、' + money(action.money) + '备用金，减少留给日常重心的时间。', available: !reason, reason, selected: planned?.id === action.id };
     }),
     plannedText: planned ? '今年已约好：' + planned.label + '。费用和实际经历会在这一年过去后记下。' : '可以照着现在的安排过，也可以另约一件具体的事。',
     commitmentText, notice: isActive ? (canMeetZhou ? '周舟问起合作的事，可以在主动安排里约她。' : state.age === 28 && y.cooperation && y.connection < 2 ? '最近总错过周舟的消息。如果还想一起做事，得先抽空把分工对上。' : '') : '', summary,
