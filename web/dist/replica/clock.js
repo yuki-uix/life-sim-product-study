@@ -1,21 +1,15 @@
-/**
- * Presentation progress toward the next existing annual settlement.
- * This does not measure or settle time spent on a life focus.
- */
-export function advanceClock(state = {}, elapsedMs = 0, speed = 1, yearMs = 30000) {
-  const fraction = Number.isFinite(state.fraction)
-    ? Math.min(1, Math.max(0, state.fraction)) : 0;
-  // A minimized decision is still unanswered; it never removes this gate.
-  const blocked = state.status !== 'living' || state.pending || state.needsPlan ||
-    state.paused || state.hidden || state.modalOpen;
-  if (blocked || fraction === 1) return { fraction, complete: false };
+import { DAYS_PER_YEAR } from './engine.js?v=3';
 
-  const elapsed = Number.isNaN(Number(elapsedMs)) ? 0
-    : Math.min(1000, Math.max(0, Number(elapsedMs)));
+/** Convert active wall time to whole simulation days; the engine owns all progress. */
+export function elapsedDays(state = {}, elapsedMs = 0, speed = 1, yearMs = 30000) {
+  const carry = Number.isFinite(state.carry) ? Math.max(0, Math.min(.999999999, state.carry)) : 0;
+  if (state.status !== 'living' || state.pending || state.needsPlan || state.paused || state.hidden || state.modalOpen) {
+    return { days: 0, carry };
+  }
+  const elapsed = Number.isNaN(Number(elapsedMs)) ? 0 : Math.max(0, Math.min(1000, Number(elapsedMs)));
   const multiplier = [1, 2, 4, 8, 16].includes(speed) ? speed : 1;
-  const duration = state.fastForward ? 1000
-    : (Number.isFinite(yearMs) && yearMs > 0 ? yearMs : 30000) / multiplier;
-  const next = Math.min(1, fraction + elapsed / duration);
-  // Emit one crossing. The caller settles exactly one year, then resets to 0.
-  return { fraction: next, complete: fraction < 1 && next === 1 };
+  const duration = state.fastForward ? 1000 : (Number.isFinite(yearMs) && yearMs > 0 ? yearMs : 30000) / multiplier;
+  const total = carry + elapsed * DAYS_PER_YEAR / duration;
+  const days = Math.floor(total + 1e-9);
+  return { days, carry: Math.max(0, total - days) };
 }

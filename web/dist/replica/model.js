@@ -1,9 +1,20 @@
-/** Read-only presentation of the China sample, not a second simulation. */
-import { getCurrentScene, getLifeView } from '../life/engine.js';
+/** Read-only presentation of the continuous-investment China sample. */
+import { getCurrentScene, getLifeView } from './engine.js?v=3';
 import { PROFILE, getPeople } from '../life/content.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
-const yuan = value => value.toLocaleString('zh-CN') + '元';
+const yuan = value => Math.round(value).toLocaleString('zh-CN') + '元';
+const oneDecimal = value => Number.isFinite(value) ? value.toFixed(1) : '0.0';
+const focusLabels = { make: '给作品留时间', connect: '与人来往', settle: '安顿生活' };
+
+function ledgerRows(ledger) {
+  if (!ledger || !Number.isFinite(ledger.total)) return [];
+  return Object.entries(focusLabels).map(([id, label]) => {
+    const days = Number.isFinite(ledger[id]) ? ledger[id] : 0;
+    const months = Number((days / 30).toFixed(1));
+    return { id, label, days, months, value: months.toFixed(1) + '个月', share: ledger.total > 0 ? days / ledger.total : 0 };
+  });
+}
 
 function identityFor(state) {
   const f = state.facts;
@@ -30,10 +41,10 @@ function statusFor(state, view) {
   if (!view.active) return [];
   const y = state.facts.young;
   return [
-    { id: 'progress', label: '片子准备', raw: y.progress, max: 18, unit: '', value: y.progress + ' / 18', detail: view.items[0].value },
-    { id: 'skill', label: '剪辑熟练', raw: y.skill, max: 12, unit: '', value: y.skill + ' / 12', detail: view.items[0].detail },
-    { id: 'energy', label: '精力', raw: y.energy, max: 6, unit: '', value: y.energy + ' / 6', detail: y.energy <= 1 ? '需要缓一缓' : y.energy <= 3 ? '有些累' : '精力尚可' },
-    { id: 'connection', label: '近期来往', raw: y.connection, max: 6, unit: '', value: y.connection + ' / 6', detail: view.items[3].value },
+    { id: 'progress', label: '片子准备', raw: y.progress, max: 18, unit: '', value: oneDecimal(y.progress) + ' / 18', detail: view.items[0].value },
+    { id: 'skill', label: '剪辑熟练', raw: y.skill, max: 12, unit: '', value: oneDecimal(y.skill) + ' / 12', detail: view.items[0].detail },
+    { id: 'energy', label: '精力', raw: y.energy, max: 6, unit: '', value: oneDecimal(y.energy) + ' / 6', detail: y.energy <= 1 ? '需要缓一缓' : y.energy <= 3 ? '有些累' : '精力尚可' },
+    { id: 'connection', label: '近期来往', raw: y.connection, max: 6, unit: '', value: oneDecimal(y.connection) + ' / 6', detail: view.items[3].value },
   ];
 }
 
@@ -52,6 +63,15 @@ export function getReplicaView(state) {
     commitmentText: view.commitmentText || '', notice: view.notice || '',
     yearTime: view.active ? copy(view.yearTime) : null,
     summary: view.summary || '', currentScene,
+    currentMonth: view.currentMonth || Math.floor((state.day || 0) / 30) + 1,
+    ledgerRows: ledgerRows(view.yearLedger),
+    totalLedgerRows: ledgerRows(view.totalLedger),
+    committedDays: Number.isFinite(view.committedDays) ? view.committedDays : 0,
+    activeProject: view.activeProject ? copy(view.activeProject) : null,
+    projectSummary: view.projectSummary || '',
+    routeFacts: (view.routeFacts || []).map(fact => typeof fact === 'string' ? fact : fact.label),
+    routeFactRecords: copy(view.routeRecords || view.routeFacts || []),
+    lastChangeSummaries: copy(view.lastChanges || []),
   };
 }
 

@@ -4,17 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#eaf0ec">
-  <meta name="description" content="1in8b 界面与交互流程的独立复刻研究，使用中国虚构人生样本。">
-  <title>这一生 · 交互复刻</title>
+  <meta name="description" content="日常按实际经过的时间累计，形成能力、经历与不同的机会。中国虚构人生样本。">
+  <title>这一生 · 日常与成长</title>
   <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=1">
-  <script type="module" src="./app.js?v=2"></script>
+  <link rel="stylesheet" href="./style.css?v=3">
+  <script type="module" src="./app.js?v=3"></script>
 </head>
 <body data-phase="intro">
   <header class="toolbar" id="toolbar" hidden></header>
   <main id="app"><p>正在整理出生登记…</p></main>
   <dialog id="decision" class="modal" aria-labelledby="decision-title"></dialog>
-  <dialog id="arrangement" class="modal" aria-labelledby="arrangement-title"></dialog>
   <dialog id="restart" class="modal" aria-labelledby="restart-title"><div class="modal-top">重新开始</div><div class="modal-content"><h2 id="restart-title">再过一次这一生？</h2><p>会替换这份对照试玩的进度。原版本的存档仍在。</p><div class="modal-actions"><button data-action="cancel-restart">留在这里</button><button class="primary" data-action="confirm-restart">重新开始</button></div></div></dialog>
   <p id="toast" role="status" hidden></p>
   <noscript>请启用 JavaScript 开始这段人生。</noscript>

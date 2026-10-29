@@ -113,6 +113,24 @@ details > summary { cursor:pointer; }
 .scene-caption strong { font-weight:500; color:var(--ink); }
 .focus-panel { padding:16px; }
 .focus-panel > .panel-heading,.life-feed > .panel-heading { padding:0; }
+.effort-ledger { margin-top:15px; padding-top:12px; border-top:1px solid #e1e7e3; }
+.ledger-title { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.ledger-title h3 { font-size:12px; font-weight:500; }
+.ledger-title > small { color:var(--muted); font-size:10px; }
+.ledger-rows { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:8px; }
+.ledger-rows > div { display:flex; flex-direction:column; gap:2px; padding:6px 8px; background:#eef3ef; }
+.ledger-rows span { color:#677d71; font-size:11px; }
+.ledger-rows strong { font-size:14px; font-weight:500; font-variant-numeric:tabular-nums; }
+.effort-history { font-size:11px; color:var(--muted); margin-top:8px; }
+.effort-history summary { min-height:26px; padding:3px 0; }
+.ledger-commitment { font-size:11px; color:#6e7662; margin-top:7px; }
+.ongoing-practice { margin-top:13px; padding:11px 12px; border-left:2px solid #7f9c8d; background:#edf3ef; }
+.practice-caption { color:#6d8177; font-size:10px; margin-bottom:4px; }
+[data-project-summary] { font-size:12px; line-height:1.8; color:#35554a; }
+.practice-track { height:5px; background:#d6e1d9; margin-top:8px; }
+.practice-track > i { display:block; height:100%; background:#669780; }
+.route-facts { margin:7px 0 0; padding-left:16px; color:#5e7368; font-size:11px; line-height:1.8; }
+.route-facts:empty { display:none; }
 .focus-context { font-size:13px; color:var(--muted); margin:0 0 11px; }
 .focus-options { display:flex; flex-wrap:wrap; align-items:stretch; gap:7px; }
 .focus-chip { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; min-height:44px; padding:7px 13px; border-radius:25px; font-size:13px; line-height:1.35; text-align:left; }
@@ -130,6 +148,7 @@ details > summary { cursor:pointer; }
 .log-row { display:grid; grid-template-columns:36px minmax(0,1fr) 25px; gap:10px; align-items:start; padding:12px 0; border-bottom:1px solid #e1e7e3; }
 .log-row:last-child { border-bottom:0; }
 .log-age { padding-top:1px; color:var(--muted); font-size:12px; line-height:1.8; white-space:nowrap; }
+.log-age > small { display:block; color:#8b9991; font-size:10px; }
 .log-copy { min-width:0; }
 .log-title { font-size:13px; font-weight:500; line-height:1.75; }
 .log-body { color:#334746; font-size:14px; line-height:1.85; overflow-wrap:anywhere; }
