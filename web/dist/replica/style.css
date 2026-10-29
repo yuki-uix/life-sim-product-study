@@ -139,6 +139,10 @@ details > summary { cursor:pointer; }
 .focus-chip[aria-pressed=true] small { color:#deece8; }
 .focus-chip[aria-pressed=true]:hover:enabled { background:#275d58; }
 .focus-detail { color:var(--muted); font-size:12px; line-height:1.7; margin-top:10px; }
+.new-loop-entry { margin-top:14px; padding-top:13px; border-top:1px solid var(--line); }
+.new-loop-entry p { color:#526d60; font-size:13px; line-height:1.8; }
+.new-loop-entry > a { display:inline-block; text-decoration:none; margin:12px 0 7px; }
+.new-loop-entry small { display:block; color:var(--muted); font-size:11px; }
 .focus-secondary { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:13px; }
 .focus-secondary button,.small-button { min-height:32px; padding:5px 10px; font-size:12px; }
 .focus-secondary small { color:var(--muted); font-size:11px; }

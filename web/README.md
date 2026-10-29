@@ -70,7 +70,7 @@ flowchart LR
 
 ## 存档边界
 
-当前状态版本为3，写入 `china-life.replica.save.v3`；界面选择仍用 `china-life.replica.ui.v1`。状态包含种子、随机进度、实际账本、项目、完成历史、选择和当时文字。恢复时从新开局或严格核验的v2来源重放受限命令，核对结果；拆分推进、刷新或切换倍速不会重抽已发生的机会。
+当前状态版本为3，写入 `china-life.replica.save.v3`；界面选择仍用 `china-life.replica.ui.v1`。 若原来已经走过这段阶段，页面提供 `?sample=1` 的23岁新试玩，使用独立的 `china-life.replica.sample.save.v3` 与 `china-life.replica.sample.ui.v1`，随时可回原局；不会为体验新机制而覆盖原进度。状态包含种子、随机进度、实际账本、项目、完成历史、选择和当时文字。恢复时从新开局或严格核验的v2来源重放受限命令，核对结果；拆分推进、刷新或切换倍速不会重抽已发生的机会。
 
 没有v3时，页面可严格验证并接续已有的 `china-life.replica.save.v2`。迁移保留原年龄、事实、文字与待答选择，新的日数账本从接入当天开始；不能推测旧年度里各重心用了多少天。原键不删除、不回写。 后续若调整影响重放的规则或参数，须新增状态版本与迁移，不能直接改写已发布v3的过去。原 `china-life.save.v2` 仍由 `/life/previous.html` 读取，`china-life.save.v1` 仍由 `/life-v1/` 读取；校园存档独立保留。
 

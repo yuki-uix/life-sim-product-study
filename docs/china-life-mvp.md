@@ -1,6 +1,6 @@
 # 中国完整一生 MVP 范围
 
-更新：2026-10-29。状态：默认试玩已接入v3连续投入、条件机会与完成历史。[进入当前试玩](https://three-weekends-yuki.yuki-uix.chatgpt.site/replica/)；首页及原 `/life/` 地址都进入这里。[原v2界面与存档](https://three-weekends-yuki.yuki-uix.chatgpt.site/life/previous.html)和[更早v1](https://three-weekends-yuki.yuki-uix.chatgpt.site/life-v1/)保留。
+更新：2026-10-29。状态：默认试玩已接入v3连续投入、条件机会与完成历史。[进入当前试玩](https://three-weekends-yuki.yuki-uix.chatgpt.site/replica/)；首页及原 `/life/` 地址都进入这里。 已走过这段阶段时，可从页面进入独立保存的23岁新试玩，并保留原局。[原v2界面与存档](https://three-weekends-yuki.yuki-uix.chatgpt.site/life/previous.html)和[更早v1](https://three-weekends-yuki.yuki-uix.chatgpt.site/life-v1/)保留。
 
 本页是当前MVP范围入口。[两条完整纸面试玩](china-life-paper-playthroughs.md)保留为内容基线；现行投入与机会规则以本页为准。原作证据和独立设计的区别见[核心机制](one8b-core-mechanics.md)，实现与检查见[web/README](../web/README.md)。
 
